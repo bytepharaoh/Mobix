@@ -14,13 +14,14 @@ import (
 )
 
 func main() {
+
 	log := logger.New()
-	port := config.GetString("TRIP_HTTP_PORT", "8082")
+	port := config.GetString("PAYMENT_HTTP_PORT", "8084")
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok","service":"trip"}`))
+		w.Write([]byte(`{"status":"ok","service":"payment"}`))
 	})
 	srv := &http.Server{
 		Addr:         ":" + port,
@@ -30,7 +31,7 @@ func main() {
 		IdleTimeout:  120 * time.Second,
 	}
 	go func() {
-		log.Info("trip service starting", slog.String("port", port))
+		log.Info("payment service starting", slog.String("port", port))
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Error("server error", slog.String("error", err.Error()))
 			os.Exit(1)
@@ -39,7 +40,6 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-
 	log.Info("shutting down gracefully...")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
