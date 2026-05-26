@@ -1,7 +1,7 @@
 # Mobix Makefile
 # Commands for building, running, testing, and deploying
 
-.PHONY: docker-up docker-down run-driver run-trip run-gateway run-payment
+.PHONY: docker-up docker-down run-driver run-trip run-gateway run-payment help setup-migrations migration migrate-up migrate-down
 
 # Show available commands and their descriptions
 help:
