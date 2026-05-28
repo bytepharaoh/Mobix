@@ -59,6 +59,7 @@ services:
     volumes:
     - ./db/migrations:/app/db/migrations
 
+    # Path to .env file
     env_file:
     - .env
 
