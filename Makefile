@@ -41,11 +41,6 @@ run-gateway:
 run-payment:
 	go run ./cmd/payment/main.go
 
-# Use this before migrations for installing Nodejs and its dependencies
-setup-migrations:
-	docker compose run --rm migrations npm init -y
-	docker compose run --rm migrations npm install --save-dev migrate-mongo dotenv
-
 # Create a new migration file. Example "make migration name=smth"
 # Npx tool for running Nodejs without global installation
 migration:
