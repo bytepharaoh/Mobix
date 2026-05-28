@@ -1,0 +1,8 @@
+FROM node:22
+
+WORKDIR /app
+
+COPY . .
+
+RUN npm init -y
+RUN npm install --save-dev migrate-mongo dotenv
