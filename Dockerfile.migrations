@@ -1,0 +1,13 @@
+# Configuration for migrations container
+
+FROM node:22
+
+WORKDIR /app
+
+# Copy all project inside it. (May be optimized by noot copying all project,
+# but works fast, so seems ok)
+COPY . .
+
+# Run preparation commands for installing Node.js and its dependencies
+RUN npm init -y
+RUN npm install --save-dev migrate-mongo dotenv

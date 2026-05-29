@@ -45,3 +45,23 @@ services:
 
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
+
+  # Container for node.js used for migration library migrate-mongo
+  migrations:
+    build:
+      context: .
+      dockerfile: Dockerfile.migrations
+
+    working_dir: /app
+
+    # This command maps local directory to a docker one,
+    # so migration file added inside docker will appear in our project as well
+    volumes:
+    - ./db/migrations:/app/db/migrations
+
+    # Path to .env file
+    env_file:
+    - .env
+
+    depends_on:
+      - mongodb
