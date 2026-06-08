@@ -50,9 +50,12 @@ func ConnectMongo() (*mongo.Client, error) {
 }
 
 func DisconnectMongo(client *mongo.Client) error {
-	err := client.Disconnect(context.Background())
-	if err != nil {
-		return fmt.Errorf("failed to disconnect mongo. %w", err)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := client.Disconnect(ctx); err != nil {
+		return fmt.Errorf("failed to disconnect mongo: %w", err)
 	}
+
 	return nil
 }

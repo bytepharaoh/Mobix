@@ -17,12 +17,12 @@ import (
 func main() {
 
 	log := logger.New()
-	port := config.GetString("DRIVER_PORT", "8083")
+	port := config.GetString("DRIVER_HTTP_PORT", "8083")
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok","service":"gateway"}`))
+		w.Write([]byte(`{"status":"ok","service":"driver"}`))
 	})
 	srv := &http.Server{
 		Addr:         ":" + port,
@@ -35,7 +35,7 @@ func main() {
 	// Mongo Connection
 	client, err := db.ConnectMongo()
 	if err != nil {
-		log.Error("Connection to Mongo failed", err)
+		log.Error("Connection to Mongo failed", slog.Any("error", err))
 		os.Exit(1)
 	}
 	log.Info("Connected to Mongo succesfully")
@@ -56,7 +56,7 @@ func main() {
 	defer cancel()
 	// Disconnect mongo on shutdown
 	if err := client.Disconnect(ctx); err != nil {
-		log.Error("Failed to disconnect from Mongo", err.Error())
+		log.Error("Failed to disconnect from Mongo", slog.Any("error", err))
 	} else {
 		log.Info("Successfully disconnected from Mongo")
 	}
