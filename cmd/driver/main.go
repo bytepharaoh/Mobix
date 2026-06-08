@@ -35,7 +35,7 @@ func main() {
 	// Mongo Connection
 	client, err := db.ConnectMongo()
 	if err != nil {
-		log.Error("Connection to Mongo failed", slog.Any("error", err))
+		log.Error("Connection to Mongo failed", slog.String("error", err))
 		os.Exit(1)
 	}
 	log.Info("Connected to Mongo succesfully")
@@ -56,7 +56,7 @@ func main() {
 	defer cancel()
 	// Disconnect mongo on shutdown
 	if err := client.Disconnect(ctx); err != nil {
-		log.Error("Failed to disconnect from Mongo", slog.Any("error", err))
+		log.Error("Failed to disconnect from Mongo", slog.String("error", err))
 	} else {
 		log.Info("Successfully disconnected from Mongo")
 	}
