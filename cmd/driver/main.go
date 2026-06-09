@@ -15,8 +15,15 @@ import (
 )
 
 func main() {
-
 	log := logger.New()
+	// Mongo Connection
+	client, err := db.ConnectMongo()
+	if err != nil {
+		log.Error("Connection to Mongo failed", slog.String("error", err))
+		os.Exit(1)
+	}
+	log.Info("Connected to Mongo succesfully")
+
 	port := config.GetString("DRIVER_HTTP_PORT", "8083")
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
@@ -31,15 +38,6 @@ func main() {
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  120 * time.Second,
 	}
-
-	// Mongo Connection
-	client, err := db.ConnectMongo()
-	if err != nil {
-		log.Error("Connection to Mongo failed", slog.String("error", err))
-		os.Exit(1)
-	}
-	log.Info("Connected to Mongo succesfully")
-
 
 	go func() {
 		log.Info("driver service starting", slog.String("port", port))
