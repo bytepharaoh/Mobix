@@ -1,3 +1,4 @@
+
 package main
 
 import (
@@ -16,21 +17,23 @@ import (
 
 func main() {
 	log := logger.New()
-	// Mongo Connection
-	client, err := db.ConnectMongo()
+
+	database, err := db.Connect()
 	if err != nil {
-		log.Error("Connection to Mongo failed", slog.String("error", err))
+		log.Error("connection to mongo failed", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
-	log.Info("Connected to Mongo succesfully")
+	log.Info("connected to mongo successfully")
 
 	port := config.GetString("DRIVER_HTTP_PORT", "8083")
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok","service":"driver"}`))
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"status":"ok","service":"driver"}`))
 	})
+
 	srv := &http.Server{
 		Addr:         ":" + port,
 		Handler:      mux,
@@ -46,17 +49,20 @@ func main() {
 			os.Exit(1)
 		}
 	}()
+
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
+
 	log.Info("shutting down gracefully...")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	// Disconnect mongo on shutdown
-	if err := client.Disconnect(ctx); err != nil {
-		log.Error("Failed to disconnect from Mongo", slog.String("error", err))
+
+	if err := db.Disconnect(database); err != nil {
+		log.Error("failed to disconnect from mongo", slog.String("error", err.Error()))
 	} else {
-		log.Info("Successfully disconnected from Mongo")
+		log.Info("disconnected from mongo successfully")
 	}
+
 	srv.Shutdown(ctx)
 }

@@ -10,52 +10,52 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
-func ConnectMongo() (*mongo.Client, error) {
-	// Getting .env variables
-	mongoUser := config.GetString("MONGO_USER", "admin")
-	mongoPwd := config.GetString("MONGO_PASSWORD", "password")
-	//mongoHost := config.GetString("MONGO_HOST", "mongodb")
-	// For development process
-	mongoHost := config.GetString("MONGO_HOST_OUTSIDE_DOCKER", "localhost")
-	mongoPort := config.GetString("MONGO_PORT", "27017")
-
-	// Constructing Mongo connection uri
-	mongoUri := fmt.Sprintf(
-		"mongodb://%s:%s@%s:%s",
-		mongoUser,
-		mongoPwd,
-		mongoHost,
-		mongoPort,
-	)
-
-	client, err := mongo.Connect(options.Client().ApplyURI(mongoUri))
-
-	if err != nil {
-		return nil, fmt.Errorf("mongo connection. %w", err)
-	}
-
-	// Creating a context to ping mongoDB
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	// To cancel context in any case
-	defer cancel()
-
-	// Ping mongoDB
-	if err := client.Ping(ctx, nil); err != nil {
-		// Disconnect and return error if smth goes wrong
-		_ = client.Disconnect(context.Background())
-		return nil, fmt.Errorf("ping mongo. %w", err)
-	}
-
-	return client, nil
+// DB holds the active MongoDB client and the target database.
+// Repositories use db.Database.Collection("name") to access collections.
+type DB struct {
+	Client   *mongo.Client
+	Database *mongo.Database
 }
 
-func DisconnectMongo(client *mongo.Client) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+// Connect builds the connection URI from env vars, connects, pings, and returns a ready DB.
+func Connect() (*DB, error) {
+	mongoUser := config.GetString("MONGO_USER", "admin")
+	mongoPwd  := config.GetString("MONGO_PASSWORD", "password")
+	mongoHost := config.GetString("MONGO_HOST", "localhost")
+	mongoPort := config.GetString("MONGO_PORT", "27017")
+	mongoName := config.GetString("MONGO_DB", "mobix")
 
-	if err := client.Disconnect(ctx); err != nil {
-		return fmt.Errorf("failed to disconnect mongo: %w", err)
+	uri := fmt.Sprintf(
+		"mongodb://%s:%s@%s:%s",
+		mongoUser, mongoPwd, mongoHost, mongoPort,
+	)
+
+	client, err := mongo.Connect(options.Client().ApplyURI(uri))
+	if err != nil {
+		return nil, fmt.Errorf("mongo connect: %w", err)
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := client.Ping(ctx, nil); err != nil {
+		_ = client.Disconnect(context.Background())
+		return nil, fmt.Errorf("mongo ping: %w", err)
+	}
+
+	return &DB{
+		Client:   client,
+		Database: client.Database(mongoName),
+	}, nil
+	}
+
+	// Disconnect closes the MongoDB connection cleanly.
+func Disconnect(database *DB) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := database.Client.Disconnect(ctx); err != nil {
+		return fmt.Errorf("mongo disconnect: %w", err)
+	}
 	return nil
 }
