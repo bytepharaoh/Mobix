@@ -5,6 +5,11 @@ go 1.26.1
 require go.mongodb.org/mongo-driver/v2 v2.7.0
 
 require (
+	go.mongodb.org/mongo-driver v1.17.9
+	go.mongodb.org/mongo-driver/v2 v2.6.0
+)
+
+require (
 	github.com/klauspost/compress v1.17.6 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xdg-go/scram v1.2.0 // indirect
