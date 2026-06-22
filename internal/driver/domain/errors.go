@@ -22,4 +22,24 @@ var (
 		Message: "Driver is currently busy",
 		Status:  http.StatusConflict,
 	}
+	ErrInvalidLocation = &apperrors.AppError{
+		Code:    "INVALID_LOCATION",
+		Message: "Invalid location",
+		Status:  http.StatusBadRequest,
+	}
+	ErrInvalidEmail = &apperrors.AppError{
+		Code:    "INVALID_EMAIL",
+		Message: "Invalid email",
+		Status:  http.StatusBadRequest,
+	}
+	ErrInvalidPhoneNumber = &apperrors.AppError{
+		Code:    "INVALID_PHONE_NUMBER",
+		Message: "Invalid phone number",
+		Status:  http.StatusBadRequest,
+	}
+	ErrInvalidCarNumber = &apperrors.AppError{
+		Code:    "INVALID_CAR_NUMBER",
+		Message: "Invalid car number",
+		Status:  http.StatusBadRequest,
+	}
 )
