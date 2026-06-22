@@ -42,4 +42,14 @@ var (
 		Message: "Invalid car number",
 		Status:  http.StatusBadRequest,
 	}
+	ErrInvalidName = &apperrors.AppError{
+		Code:    "INVALID_NAME",
+		Message: "Invalid name",
+		Status:  http.StatusBadRequest,
+	}
+	ErrInvalidCarModel = &apperrors.AppError{
+		Code:    "INVALID_CAR_MODEL",
+		Message: "Invalid car model",
+		Status:  http.StatusBadRequest,
+	}
 )

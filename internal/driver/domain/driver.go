@@ -39,18 +39,26 @@ type Driver struct {
 }
 
 type CreateDriverRequest struct {
-	Name string `bson:"name" json:"name"`
-	Email string `bson:"email" json:"email"`
-	Phone string `bson:"phone" json:"phone"`
-	CarNumber string `bson:"car_number" json:"carNumber"`
-	CarModel string `bson:"car_model" json:"carModel"`
-	Location Location `bson:"location" json:"location"`
+	Name string `json:"name"`
+	Email string `json:"email"`
+	Phone string `json:"phone"`
+	CarNumber string `json:"carNumber"`
+	CarModel string `json:"carModel"`
+	Location Location `json:"location"`
 }
 
 func (r *CreateDriverRequest) Validate() error {
 	// Location validation
 	if r.Location.Lat == 0 && r.Location.Lng == 0 {
 		return ErrInvalidLocation
+	}
+	// Name validation
+	if r.Name == "" {
+		return ErrInvalidName
+	}
+	// Car model validation
+	if r.CarModel == "" {
+		return ErrInvalidCarModel
 	}
 	// Email validation
 	if r.Email == "" {
