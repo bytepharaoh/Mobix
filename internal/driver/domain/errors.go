@@ -1,9 +1,25 @@
 package domain
 
-import "errors"
+import (
+	"net/http"
+
+	apperrors "github.com/bytepharaoh/Mobix/pkg/errors"
+)
 
 var (
-	ErrDriverNotFound = errors.New("Driver not found")
-	ErrDriverAlreadyExists = errors.New("Driver already exists")
-	ErrDriverBusy = errors.New("Driver is busy")
+	ErrDriverNotFound = &apperrors.AppError{
+		Code:    "DRIVER_NOT_FOUND",
+		Message: "Driver not found",
+		Status:  http.StatusNotFound,
+	}
+	ErrDriverAlreadyExists = &apperrors.AppError{
+		Code:    "DRIVER_ALREADY_EXISTS",
+		Message: "Driver already exists",
+		Status:  http.StatusConflict,
+	}
+	ErrDriverBusy = &apperrors.AppError{
+		Code:    "DRIVER_BUSY",
+		Message: "Driver is currently busy",
+		Status:  http.StatusConflict,
+	}
 )
