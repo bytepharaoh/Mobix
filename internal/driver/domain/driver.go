@@ -34,8 +34,8 @@ type Driver struct {
 	LastLoginAt time.Time `bson:"last_login_at" json:"lastLoginAt"`
 	Rating float64  `bson:"rating" json:"rating"`
 	TotalTrips int `bson:"total_trips" json:"totalTrips"`
-	CreatedAt time.Time `bson:"created_at,omitempty" json:"createdAt"`	
-	UpdatedAt time.Time `bson:"updated_at,omitempty" json:"updatedAt"`
+	CreatedAt time.Time `bson:"created_at" json:"createdAt"`	
+	UpdatedAt time.Time `bson:"updated_at" json:"updatedAt"`
 }
 
 type CreateDriverRequest struct {
