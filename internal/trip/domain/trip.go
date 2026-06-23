@@ -3,7 +3,8 @@ package domain
 import (
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson/primitive"
+"go.mongodb.org/mongo-driver/v2/bson"
+
 )
 
 type TripStatus string
@@ -26,7 +27,7 @@ type Location struct {
 // Trip is the core domain object for the trip service.
 // One Trip = one document in MongoDB = one ride from request to completion.
 type Trip struct {
-	ID        primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	ID        bson.ObjectID `bson:"_id,omitempty" json:"id"`
 	RiderID   string             `bson:"rider_id"      json:"rider_id"`
 	DriverID  string             `bson:"driver_id"     json:"driver_id,omitempty"`
 	Pickup    Location           `bson:"pickup"        json:"pickup"`

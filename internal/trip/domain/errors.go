@@ -22,4 +22,10 @@ var(
 		Message: "dropoff coordinates are required",
 		Status:  http.StatusBadRequest,
 	}
+	ErrTripNotFound = &apperrors.AppError{
+    Code:    "TRIP_NOT_FOUND",
+    Message: "Trip not found",
+    Status:  http.StatusNotFound,
+}
+
 )
