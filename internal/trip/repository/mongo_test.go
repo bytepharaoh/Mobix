@@ -5,11 +5,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bytepharaoh/Mobix/internal/trip/domain"
 	"github.com/testcontainers/testcontainers-go/modules/mongodb"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
+
+	"github.com/bytepharaoh/Mobix/internal/trip/domain"
 )
 
 // setupTestDB spins up a real MongoDB container for tests.
@@ -47,8 +48,12 @@ func setupTestDB(t *testing.T) (Repository, func()) {
 
 	// cleanup function — called at end of each test
 	cleanup := func() {
-		client.Disconnect(ctx)
-		container.Terminate(ctx)
+		if err := client.Disconnect(ctx); err != nil {
+			t.Logf("failed to disconnect mongo: %v", err)
+		}
+		if err := container.Terminate(ctx); err != nil {
+			t.Logf("failed to terminate container: %v", err)
+		}
 	}
 
 	return repo, cleanup
@@ -196,10 +201,10 @@ func TestFindByID(t *testing.T) {
 
 func TestUpdateStatus(t *testing.T) {
 	tests := []struct {
-		name       string
-		newStatus  domain.TripStatus
-		setup      func(repo Repository) string
-		wantErr    bool
+		name      string
+		newStatus domain.TripStatus
+		setup     func(repo Repository) string
+		wantErr   bool
 	}{
 		{
 			name:      "successfully updates status to assigned",

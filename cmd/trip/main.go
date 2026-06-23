@@ -16,13 +16,13 @@ import (
 
 func main() {
 	log := logger.New()
-	//connect to mongodb 
-	database , err := db.Connect()
+	//connect to mongodb
+	database, err := db.Connect()
 	if err != nil {
-	log.Error("connection to mongo failed", slog.String("error", err.Error()))
+		log.Error("connection to mongo failed", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
-		log.Info("connected to mongo successfully")
+	log.Info("connected to mongo successfully")
 
 	port := config.GetString("TRIP_HTTP_PORT", "8082")
 
@@ -30,7 +30,9 @@ func main() {
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok","service":"trip"}`))
+		if _, err := w.Write([]byte(`{"status":"ok","service":"trip"}`)); err != nil {
+			log.Error("failed to write response", slog.String("error", err.Error()))
+		}
 	})
 	srv := &http.Server{
 		Addr:         ":" + port,
@@ -53,12 +55,14 @@ func main() {
 	log.Info("shutting down gracefully...")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	//discconnecting from db before exit 
-	if err:= db.Disconnect(database); err!=nil{
-				log.Error("failed to disconnect from mongo", slog.String("error", err.Error()))
-	}else{
-				log.Info("disconnected from mongo successfully")
+	//discconnecting from db before exit
+	if err := db.Disconnect(database); err != nil {
+		log.Error("failed to disconnect from mongo", slog.String("error", err.Error()))
+	} else {
+		log.Info("disconnected from mongo successfully")
 
 	}
-	srv.Shutdown(ctx)
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Error("shutdown error", slog.String("error", err.Error()))
+	}
 }

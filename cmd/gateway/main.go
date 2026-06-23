@@ -21,7 +21,9 @@ func main() {
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok","service":"gateway"}`))
+		if _, err := w.Write([]byte(`{"status":"ok","service":"gateway"}`)); err != nil {
+			log.Error("failed to write response", slog.String("error", err.Error()))
+		}
 	})
 	srv := &http.Server{
 		Addr:         ":" + port,
@@ -43,5 +45,7 @@ func main() {
 	log.Info("shutting down gracefully...")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	srv.Shutdown(ctx)
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Error("shutdown error", slog.String("error", err.Error()))
+	}
 }

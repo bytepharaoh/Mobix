@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -29,9 +28,11 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status":"ok","service":"driver"}`))
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write([]byte(`{"status":"ok","service":"driver"}`)); err != nil {
+			log.Error("failed to write response", slog.String("error", err.Error()))
+		}
 	})
 
 	srv := &http.Server{
@@ -64,5 +65,7 @@ func main() {
 		log.Info("disconnected from mongo successfully")
 	}
 
-	srv.Shutdown(ctx)
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Error("shutdown error", slog.String("error", err.Error()))
+	}
 }
