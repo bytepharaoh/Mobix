@@ -33,3 +33,6 @@ go.work.sum
 
 # Js files
 /node_modules
+bin/
+coverage.out
+coverage.html
