@@ -11,8 +11,8 @@ type DriverStatus string
 
 const (
 	StatusAvailable DriverStatus = "available"
-	StatusOnTrip DriverStatus = "on_trip"
-	StatusOffline DriverStatus = "offline"
+	StatusOnTrip    DriverStatus = "on_trip"
+	StatusOffline   DriverStatus = "offline"
 )
 
 // Struct for a location
@@ -23,28 +23,28 @@ type Location struct {
 
 // Struct for a driver entity
 type Driver struct {
-	ID primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	Name string `bson:"name" json:"name"`
-	Email string `bson:"email" json:"email"`
-	Phone string `bson:"phone" json:"phone"`
-	CarNumber string `bson:"car_number" json:"carNumber"`
-	CarModel string `bson:"car_model" json:"carModel"`
-	Location Location `bson:"location" json:"location"`
-	Status DriverStatus `bson:"status" json:"status"` 
-	LastLoginAt time.Time `bson:"last_login_at" json:"lastLoginAt"`
-	Rating float64  `bson:"rating" json:"rating"`
-	TotalTrips int `bson:"total_trips" json:"totalTrips"`
-	CreatedAt time.Time `bson:"created_at" json:"createdAt"`	
-	UpdatedAt time.Time `bson:"updated_at" json:"updatedAt"`
+	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	Name        string             `bson:"name" json:"name"`
+	Email       string             `bson:"email" json:"email"`
+	Phone       string             `bson:"phone" json:"phone"`
+	CarNumber   string             `bson:"car_number" json:"carNumber"`
+	CarModel    string             `bson:"car_model" json:"carModel"`
+	Location    Location           `bson:"location" json:"location"`
+	Status      DriverStatus       `bson:"status" json:"status"`
+	LastLoginAt time.Time          `bson:"last_login_at" json:"lastLoginAt"`
+	Rating      float64            `bson:"rating" json:"rating"`
+	TotalTrips  int                `bson:"total_trips" json:"totalTrips"`
+	CreatedAt   time.Time          `bson:"created_at" json:"createdAt"`
+	UpdatedAt   time.Time          `bson:"updated_at" json:"updatedAt"`
 }
 
 type CreateDriverRequest struct {
-	Name string `json:"name"`
-	Email string `json:"email"`
-	Phone string `json:"phone"`
-	CarNumber string `json:"carNumber"`
-	CarModel string `json:"carModel"`
-	Location Location `json:"location"`
+	Name      string   `json:"name"`
+	Email     string   `json:"email"`
+	Phone     string   `json:"phone"`
+	CarNumber string   `json:"carNumber"`
+	CarModel  string   `json:"carModel"`
+	Location  Location `json:"location"`
 }
 
 func (r *CreateDriverRequest) Validate() error {
@@ -72,6 +72,6 @@ func (r *CreateDriverRequest) Validate() error {
 	if r.CarNumber == "" {
 		return ErrInvalidCarNumber
 	}
-	
+
 	return nil
 }
