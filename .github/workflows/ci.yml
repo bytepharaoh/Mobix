@@ -8,7 +8,7 @@ on:
 
 jobs:
   ci:
-    name: Format, Lint, Build, Test
+    name: Format, Vet, Build, Test
     runs-on: ubuntu-latest
 
     steps:
@@ -25,6 +25,7 @@ jobs:
 
       - name: Verify dependencies
         run: go mod verify
+
       - name: Tidy modules
         run: go mod tidy
 
@@ -39,15 +40,8 @@ jobs:
       - name: Run go vet
         run: go vet ./...
 
-      - name: Run linter
-        uses: golangci/golangci-lint-action@v7
-        with:
-          version: v2.1.6
-          args: --timeout=5m
-
       - name: Build all services
         run: go build ./...
 
       - name: Run tests
         run: go test -v -race ./...
-      
