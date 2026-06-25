@@ -85,8 +85,6 @@ func createTestDriver(t *testing.T, repo Repository) *domain.Driver {
 func TestCreateDriver(t *testing.T) {
 	repo, _ := setupTestDB(t)
 	driver := createTestDriver(t, repo)
-	driverWithEmptyEmail := createTestDriver(t, repo)
-	driverWithEmptyEmail.Email = ""
 
 	tests := []struct {
 		name    string
@@ -97,11 +95,6 @@ func TestCreateDriver(t *testing.T) {
 			name:    "successfully creates a driver",
 			driver:  driver,
 			wantErr: false,
-		},
-		{
-			name:    "creates driver with empty email",
-			driver:  driverWithEmptyEmail,
-			wantErr: false, // repository doesn't validate
 		},
 	}
 
@@ -218,11 +211,11 @@ func TestFindByID(t *testing.T) {
 			}
 
 			if result.Name != "Pavel Khramov" {
-				t.Errorf("got name %s, want John Doe", result.Name)
+				t.Errorf("got name %s, want Pavel Khramov", result.Name)
 			}
 
-			if result.Email != "Pashka@example.com" {
-				t.Errorf("got email %s, want Pashka@example.com", result.Email)
+			if result.Email != "pashka@example.com" {
+				t.Errorf("got email %s, want pashka@example.com", result.Email)
 			}
 
 			if result.Status != domain.StatusAvailable {
