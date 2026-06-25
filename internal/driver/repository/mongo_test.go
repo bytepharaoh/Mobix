@@ -176,12 +176,7 @@ func TestFindByID(t *testing.T) {
 			setup: func(repo Repository) string {
 				driver := createTestDriver(t, repo)
 
-				created, err := repo.Create(context.Background(), driver)
-				if err != nil {
-					return ""
-				}
-
-				return created.ID.Hex()
+				return driver.ID.Hex()
 			},
 			wantErr: false,
 		},
