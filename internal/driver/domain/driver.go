@@ -3,7 +3,7 @@ package domain
 import (
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 // Driver statuses
@@ -23,19 +23,19 @@ type Location struct {
 
 // Struct for a driver entity
 type Driver struct {
-	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	Name        string             `bson:"name" json:"name"`
-	Email       string             `bson:"email" json:"email"`
-	Phone       string             `bson:"phone" json:"phone"`
-	CarNumber   string             `bson:"car_number" json:"carNumber"`
-	CarModel    string             `bson:"car_model" json:"carModel"`
-	Location    Location           `bson:"location" json:"location"`
-	Status      DriverStatus       `bson:"status" json:"status"`
-	LastLoginAt time.Time          `bson:"last_login_at" json:"lastLoginAt"`
-	Rating      float64            `bson:"rating" json:"rating"`
-	TotalTrips  int                `bson:"total_trips" json:"totalTrips"`
-	CreatedAt   time.Time          `bson:"created_at" json:"createdAt"`
-	UpdatedAt   time.Time          `bson:"updated_at" json:"updatedAt"`
+	ID          bson.ObjectID `bson:"_id,omitempty" json:"id"`
+	Name        string        `bson:"name" json:"name"`
+	Email       string        `bson:"email" json:"email"`
+	Phone       string        `bson:"phone" json:"phone"`
+	CarNumber   string        `bson:"car_number" json:"carNumber"`
+	CarModel    string        `bson:"car_model" json:"carModel"`
+	Location    Location      `bson:"location" json:"location"`
+	Status      DriverStatus  `bson:"status" json:"status"`
+	LastLoginAt time.Time     `bson:"last_login_at" json:"lastLoginAt"`
+	Rating      float64       `bson:"rating" json:"rating"`
+	TotalTrips  int           `bson:"total_trips" json:"totalTrips"`
+	CreatedAt   time.Time     `bson:"created_at" json:"createdAt"`
+	UpdatedAt   time.Time     `bson:"updated_at" json:"updatedAt"`
 }
 
 type CreateDriverRequest struct {
