@@ -7,38 +7,41 @@ import (
 )
 
 type AppError struct {
-	Code string `json:"code"`
+	Code    string `json:"code"`
 	Message string `json:"message"`
-	Status int `json:"-"`  
+	Status  int    `json:"-"`
 }
 
 func (e *AppError) Error() string {
-	return  fmt.Sprintf("[%s] %s" , e.Code , e.Message)
+	return fmt.Sprintf("[%s] %s", e.Code, e.Message)
 }
-func New (status int , code , message string ) *AppError {
+func New(status int, code, message string) *AppError {
 	return &AppError{
-		Status: status,
-		Code: code,
+		Status:  status,
+		Code:    code,
 		Message: message,
 	}
 }
-//Is allows error.Is() to work with the AppError
-func (e *AppError)Is(target error) bool {
 
-	t , ok := target.(*AppError)
+// Is allows error.Is() to work with the AppError
+func (e *AppError) Is(target error) bool {
+
+	t, ok := target.(*AppError)
 	if !ok {
-		return  false
+		return false
 	}
 	return e.Code == t.Code
 }
-// AsAppError extracts an AppError  from any error vlaue , handler call this 
-func AsAppError (err error) (*AppError , bool){
+
+// AsAppError extracts an AppError  from any error vlaue , handler call this
+func AsAppError(err error) (*AppError, bool) {
 	var appError *AppError
-	if errors.As(err , &appError) {
-		return appError,true
+	if errors.As(err, &appError) {
+		return appError, true
 	}
-	return ErrInternal , false
+	return ErrInternal, false
 }
+
 var (
 	// Generic errors — any service can use these
 

@@ -6,8 +6,8 @@ import (
 	apperrors "github.com/bytepharaoh/Mobix/pkg/errors"
 )
 
-var(
-	ErrMissingRiderID=&apperrors.AppError{
+var (
+	ErrMissingRiderID = &apperrors.AppError{
 		Code:    "MISSING_RIDER_ID",
 		Message: "rider_id is required",
 		Status:  http.StatusBadRequest,
@@ -17,9 +17,14 @@ var(
 		Message: "pickup coordinates are required",
 		Status:  http.StatusBadRequest,
 	}
-		ErrInvalidDropoff = &apperrors.AppError{
+	ErrInvalidDropoff = &apperrors.AppError{
 		Code:    "INVALID_DROPOFF",
 		Message: "dropoff coordinates are required",
 		Status:  http.StatusBadRequest,
+	}
+	ErrTripNotFound = &apperrors.AppError{
+		Code:    "TRIP_NOT_FOUND",
+		Message: "Trip not found",
+		Status:  http.StatusNotFound,
 	}
 )

@@ -1,58 +1,123 @@
 # Mobix Makefile
-# Commands for building, running, testing, and deploying
+# Commands for building, running, testing, linting, and deploying
 
-.PHONY: docker-up docker-down run-driver run-trip run-gateway run-payment help setup-migrations migration migrate-up migrate-down
+.PHONY: help docker-up docker-down \
+        run-gateway run-trip run-driver run-payment \
+        build clean test test-repo test-coverage \
+        fmt lint vet check \
+        setup-migrations migration migrate-up migrate-down
 
-# Show available commands and their descriptions
+# ——— Help ——————————————————————————————————————————————
 help:
-	@echo Available commands:
-	@echo make docker-up: Create docker containers and start infrastructure (MongoDB, RabbitMQ, Jaeger)
-	@echo make docker-down: Stop docker containers
-	@echo make run-driver: Run driver/main.go driver service
-	@echo make run-trip: Run trip/main.go trip service
-	@echo make run-gateway: Run gateaway/main.go gateway service
-	@echo make run-payment: Run payment/payment.go payment service
-	@echo make setup-migrations: Use this before migrations for installing Nodejs and its dependencies
-	@echo make migration name=test: Create a new migration file. In this migration file you should write new changes to our db and then apply them. Example "make migration name=smth"
-	@echo make migrate-up: Apply last migration version to a db
-	@echo make migrate-down: Go one version down in migrations
+	@echo ""
+	@echo "Usage: make <command>"
+	@echo ""
+	@echo "Infrastructure:"
+	@echo "  docker-up          Start MongoDB, RabbitMQ, Jaeger"
+	@echo "  docker-down        Stop all containers"
+	@echo ""
+	@echo "Services:"
+	@echo "  run-gateway        Run the gateway service"
+	@echo "  run-trip           Run the trip service"
+	@echo "  run-driver         Run the driver service"
+	@echo "  run-payment        Run the payment service"
+	@echo ""
+	@echo "Build:"
+	@echo "  build              Compile all four services"
+	@echo "  clean              Remove compiled binaries"
+	@echo ""
+	@echo "Testing:"
+	@echo "  test               Run all tests with race detector"
+	@echo "  test-repo          Run repository integration tests only"
+	@echo "  test-coverage      Run tests and generate HTML coverage report"
+	@echo ""
+	@echo "Code quality:"
+	@echo "  fmt                Format all Go files"
+	@echo "  lint               Run golangci-lint"
+	@echo "  vet                Run go vet"
+	@echo "  check              Run fmt + vet + lint (run before committing)"
+	@echo ""
+	@echo "Migrations:"
+	@echo "  migration name=x   Create a new migration file"
+	@echo "  migrate-up         Apply latest migration"
+	@echo "  migrate-down       Roll back last migration"
+	@echo ""
 
-# Create docker containers and start infrastructure (MongoDB, RabbitMQ, Jaeger)
+# ——— Infrastructure ————————————————————————————————————
 docker-up:
 	docker compose up -d
 
-# Stop docker containers
 docker-down:
 	docker compose down
 
-# Run driver/main.go driver service
-run-driver:
-	go run ./cmd/driver/main.go
-
-# Run trip/main.go trip service
-run-trip:
-	go run ./cmd/trip/main.go
-
-# Run gateway/main.go gateway service
+# ——— Services ——————————————————————————————————————————
 run-gateway:
-	go run ./cmd/gateway/main.go
+	go run ./cmd/gateway
 
-# Run payment/main.go payment service
+run-trip:
+	go run ./cmd/trip
+
+run-driver:
+	go run ./cmd/driver
+
 run-payment:
-	go run ./cmd/payment/main.go
+	go run ./cmd/payment
 
-# Create a new migration file. Example "make migration name=smth"
-# Npx tool for running Nodejs without global installation
+# ——— Build —————————————————————————————————————————————
+build:
+	@mkdir -p bin
+	go build -o bin/gateway ./cmd/gateway
+	go build -o bin/trip ./cmd/trip
+	go build -o bin/driver ./cmd/driver
+	go build -o bin/payment ./cmd/payment
+
+clean:
+	rm -rf bin/
+	rm -f coverage.out coverage.html
+
+# ——— Testing ———————————————————————————————————————————
+test:
+	go test -v -race ./...
+
+test-repo:
+	go test -v -race ./internal/trip/repository/... ./internal/driver/repository/...
+
+test-coverage:
+	go test -v -race -coverprofile=coverage.out ./...
+	go tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report generated: coverage.html"
+
+# ——— Code quality ——————————————————————————————————————
+fmt:
+	gofmt -w .
+
+vet:
+	go vet ./...
+
+lint:
+	golangci-lint run ./...
+
+check: fmt vet lint
+	@echo "All checks passed — safe to push"
+
+# ——— Migrations ————————————————————————————————————————
 migration:
-	docker compose run --rm migrations \
-	npx migrate-mongo create $(name)
+	docker run --rm \
+		-v $(PWD)/db/migrations:/migrations \
+		-v $(PWD)/migrate-mongo-config.js:/migrate-mongo-config.js \
+		--network host \
+		node:20-alpine sh -c "npm install -g migrate-mongo && migrate-mongo create $(name)"
 
-# Apply last migration version to a db
 migrate-up:
-	docker compose run --rm migrations \
-	npx migrate-mongo up
+	docker run --rm \
+		-v $(PWD)/db/migrations:/migrations \
+		-v $(PWD)/migrate-mongo-config.js:/migrate-mongo-config.js \
+		--network host \
+		node:20-alpine sh -c "npm install -g migrate-mongo && migrate-mongo up"
 
-# Go one version down in migrations
 migrate-down:
-	docker compose run --rm migrations \
-	npx migrate-mongo down
+	docker run --rm \
+		-v $(PWD)/db/migrations:/migrations \
+		-v $(PWD)/migrate-mongo-config.js:/migrate-mongo-config.js \
+		--network host \
+		node:20-alpine sh -c "npm install -g migrate-mongo && migrate-mongo down"

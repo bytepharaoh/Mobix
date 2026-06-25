@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/bytepharaoh/Mobix/pkg/config"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
+
+	"github.com/bytepharaoh/Mobix/pkg/config"
 )
 
 // DB holds the active MongoDB client and the target database.
@@ -20,7 +21,7 @@ type DB struct {
 // Connect builds the connection URI from env vars, connects, pings, and returns a ready DB.
 func Connect() (*DB, error) {
 	mongoUser := config.GetString("MONGO_USER", "admin")
-	mongoPwd  := config.GetString("MONGO_PASSWORD", "password")
+	mongoPwd := config.GetString("MONGO_PASSWORD", "password")
 	mongoHost := config.GetString("MONGO_HOST", "localhost")
 	mongoPort := config.GetString("MONGO_PORT", "27017")
 	mongoName := config.GetString("MONGO_DB", "mobix")
@@ -47,9 +48,9 @@ func Connect() (*DB, error) {
 		Client:   client,
 		Database: client.Database(mongoName),
 	}, nil
-	}
+}
 
-	// Disconnect closes the MongoDB connection cleanly.
+// Disconnect closes the MongoDB connection cleanly.
 func Disconnect(database *DB) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
