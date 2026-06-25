@@ -27,4 +27,9 @@ var (
 		Message: "Trip not found",
 		Status:  http.StatusNotFound,
 	}
+	ErrInvalidTripStatus = &apperrors.AppError{
+		Code:    "INVALID_TRIP_STATUS",
+		Message: "this action is not allowed for the current trip status",
+		Status:  http.StatusUnprocessableEntity,
+	}
 )

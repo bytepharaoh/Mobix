@@ -5,7 +5,7 @@
         run-gateway run-trip run-driver run-payment \
         build clean test test-repo test-coverage \
         fmt lint vet check \
-        setup-migrations migration migrate-up migrate-down
+        setup-migrations migration migrate-up migrate-down mock
 
 # ——— Help ——————————————————————————————————————————————
 help:
@@ -30,6 +30,7 @@ help:
 	@echo "  test               Run all tests with race detector"
 	@echo "  test-repo          Run repository integration tests only"
 	@echo "  test-coverage      Run tests and generate HTML coverage report"
+	@echo "  mock     			Generate mocks from interfaces"
 	@echo ""
 	@echo "Code quality:"
 	@echo "  fmt                Format all Go files"
@@ -86,6 +87,13 @@ test-coverage:
 	go test -v -race -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated: coverage.html"
+
+# Generate mocks from interfaces (service layer)
+mock:
+	mockgen -source=internal/trip/service/service.go \
+	        -destination=internal/trip/service/mocks/mock_repository.go \
+	        -package=mocks
+
 
 # ——— Code quality ——————————————————————————————————————
 fmt:
