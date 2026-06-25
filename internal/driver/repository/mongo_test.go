@@ -66,7 +66,7 @@ func createTestDriver(t *testing.T, repo Repository) *domain.Driver {
 		Name:      "Pavel Khramov",
 		Email:     "pashka@example.com",
 		Phone:     "0123456789",
-		CarNumber: "HUI777",
+		CarNumber: "SAM777",
 		CarModel:  "Bugatti veiron",
 		Location: domain.Location{
 			Lat: 67.67,
