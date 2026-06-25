@@ -94,13 +94,13 @@ func TestCreateDriver(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "successfully creates a driver",
-			driver: driver,
+			name:    "successfully creates a driver",
+			driver:  driver,
 			wantErr: false,
 		},
 		{
-			name: "creates driver with empty email",
-			driver: driverWithEmptyEmail,
+			name:    "creates driver with empty email",
+			driver:  driverWithEmptyEmail,
 			wantErr: false, // repository doesn't validate
 		},
 	}
