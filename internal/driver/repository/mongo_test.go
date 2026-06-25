@@ -166,6 +166,9 @@ func TestCreateDriver(t *testing.T) {
 }
 
 func TestFindByID(t *testing.T) {
+	repo, cleanup := setupTestDB(t)
+	defer cleanup()
+
 	tests := []struct {
 		name    string
 		setup   func(repo Repository) string
@@ -191,9 +194,6 @@ func TestFindByID(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo, cleanup := setupTestDB(t)
-			defer cleanup()
-
 			id := tt.setup(repo)
 
 			result, err := repo.FindById(context.Background(), id)
