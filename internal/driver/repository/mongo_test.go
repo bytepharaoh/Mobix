@@ -217,12 +217,12 @@ func TestFindByID(t *testing.T) {
 				t.Errorf("got id %s, want %s", result.ID.Hex(), id)
 			}
 
-			if result.Name != "John Doe" {
+			if result.Name != "Pavel Khramov" {
 				t.Errorf("got name %s, want John Doe", result.Name)
 			}
 
-			if result.Email != "john@example.com" {
-				t.Errorf("got email %s, want john@example.com", result.Email)
+			if result.Email != "Pashka@example.com" {
+				t.Errorf("got email %s, want Pashka@example.com", result.Email)
 			}
 
 			if result.Status != domain.StatusAvailable {
