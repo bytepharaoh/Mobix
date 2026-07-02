@@ -11,29 +11,29 @@ import (
 	apperrors "github.com/bytepharaoh/Mobix/pkg/errors"
 )
 
-type MongoRepository struct {
+type mongoRepository struct {
 	collection *mongo.Collection
 }
 
 func NewMongoRepository(database *mongo.Database) Repository {
-	return &MongoRepository{
+	return &mongoRepository{
 		collection: database.Collection("driver"),
 	}
 }
 
-func (r *MongoRepository) Create(ctx context.Context, driver *domain.Driver) (*domain.Driver, error) {
+func (r *mongoRepository) Create(ctx context.Context, driver *domain.Driver) (*domain.Driver, error) {
 	now := time.Now()
 	driver.UpdatedAt = now
 	driver.CreatedAt = now
 	result, err := r.collection.InsertOne(ctx, driver)
 	if err != nil {
-		return nil, apperrors.ErrInvalidInput
+		return nil, apperrors.ErrInternal
 	}
 	driver.ID = result.InsertedID.(bson.ObjectID)
 	return driver, nil
 }
 
-func (r *MongoRepository) FindById(ctx context.Context, id string) (*domain.Driver, error) {
+func (r *mongoRepository) FindById(ctx context.Context, id string) (*domain.Driver, error) {
 	objectID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return nil, apperrors.ErrInvalidInput
@@ -50,7 +50,7 @@ func (r *MongoRepository) FindById(ctx context.Context, id string) (*domain.Driv
 	return &driver, nil
 }
 
-func (r *MongoRepository) IncreaseTotalTrips(ctx context.Context, id string, tripDelta int) error {
+func (r *mongoRepository) IncreaseTotalTrips(ctx context.Context, id string, tripDelta int) error {
 	objectID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return apperrors.ErrInvalidInput
@@ -78,7 +78,7 @@ func (r *MongoRepository) IncreaseTotalTrips(ctx context.Context, id string, tri
 	return nil
 }
 
-func (r *MongoRepository) UpdateStatus(ctx context.Context, id string, status domain.DriverStatus) error {
+func (r *mongoRepository) UpdateStatus(ctx context.Context, id string, status domain.DriverStatus) error {
 	objectID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return apperrors.ErrInvalidInput
@@ -104,7 +104,7 @@ func (r *MongoRepository) UpdateStatus(ctx context.Context, id string, status do
 	return nil
 }
 
-func (r *MongoRepository) UpdateLastLogin(ctx context.Context, id string, loginTime time.Time) error {
+func (r *mongoRepository) UpdateLastLogin(ctx context.Context, id string, loginTime time.Time) error {
 	objectID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return apperrors.ErrInvalidInput
@@ -130,7 +130,7 @@ func (r *MongoRepository) UpdateLastLogin(ctx context.Context, id string, loginT
 	return nil
 }
 
-func (r *MongoRepository) UpdateRating(ctx context.Context, id string, rating float64) error {
+func (r *mongoRepository) UpdateRating(ctx context.Context, id string, rating float64) error {
 	objectID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return apperrors.ErrInvalidInput
