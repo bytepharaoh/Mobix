@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mobix API Explorer</title>
+<style>
+:root { color-scheme: dark; --surface: #111d28; --line: #293b4b; --text: #eef4f8; --muted: #a6b8c7; --accent: #a7f3c9; }
+* { box-sizing: border-box; }
+body { margin: 0; background: #09131d; color: var(--text); font: 15px/1.55 system-ui, sans-serif; }
+main, .nav-inner { width: min(1120px, calc(100% - 48px)); margin: auto; }
+nav { border-bottom: 1px solid var(--line); }
+.nav-inner { height: 64px; display: flex; gap: 16px; align-items: center; }
+.brand { font-size: 20px; font-weight: 750; letter-spacing: -.04em; }
+.version, .label { font: 12px/1.25 ui-monospace, monospace; letter-spacing: .08em; }
+.version { color: var(--accent); background: #18362f; padding: 5px 8px; border-radius: 4px; }
+nav a { margin-left: auto; }
+a { color: var(--accent); }
+.hero { padding: 43px 0 36px; }
+.label { color: var(--accent); text-transform: uppercase; }
+h1 { margin: 8px 0; font-size: clamp(34px, 5vw, 58px); line-height: 1.05; letter-spacing: -.055em; }
+h2 { margin: 22px 0 8px; font-size: 17px; }
+p { color: var(--muted); }
+.hero p { font-size: 16px; margin: 12px 0 0; max-width: 60ch; }
+.grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 26px; align-items: start; padding-bottom: 32px; }
+.operations h2:first-child { margin-top: 0; }
+.operation { display: flex; align-items: center; gap: 10px; width: 100%; margin-bottom: 5px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; color: var(--text); background: var(--surface); cursor: pointer; text-align: left; }
+.operation:hover, .operation[aria-pressed=true] { border-color: #79baa5; }
+.method { padding: 3px 6px; min-width: 51px; text-align: center; border-radius: 4px; background: #193344; color: #bce3ff; }
+.post { color: #b8f6d1; background: #1b3d33; }
+.patch { color: #f8d49b; background: #45341e; }
+.operation code { overflow-wrap: anywhere; }
+.operation .summary { margin-left: auto; color: var(--muted); }
+.panel { padding: 20px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); min-width: 0; }
+.panel h2 { margin: 6px 0; font-size: 23px; letter-spacing: -.025em; }
+.panel p { margin: 8px 0 14px; }
+form label { display: block; margin-top: 12px; }
+input, textarea, pre { width: 100%; padding: 10px; border-radius: 5px; border: 1px solid var(--line); background: #0a141e; color: var(--text); font: 13px/1.45 ui-monospace, monospace; }
+textarea { display: block; min-height: 112px; resize: vertical; }
+.execute { margin-top: 14px; padding: 8px 16px; border: 0; border-radius: 5px; background: var(--accent); color: #08241a; font-weight: 700; cursor: pointer; }
+pre { max-height: 420px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+:focus-visible { outline: 2px solid #b8f6d1; outline-offset: 2px; }
+@media (max-width: 800px) { .grid { grid-template-columns: 1fr; } .summary { display: none; } }
+</style>
+</head>
+<body>
+<nav><div class="nav-inner"><span class="brand">Mobix</span><span id="version" class="version">API</span><a href="/openapi.json">OpenAPI JSON</a></div></nav>
+<main>
+<header class="hero">
+<div class="label">Developer reference</div>
+<h1>Mobix API Explorer</h1>
+<p>Register drivers, dispatch rides and retrieve simulated payment receipts. Try requests against this gateway.</p>
+</header>
+<div class="grid">
+<section aria-label="API operations" id="operations" class="operations"></section>
+<section aria-label="Try a request" id="panel" class="panel"><p>Loading the OpenAPI contract…</p></section>
+</div>
+</main>
+<script>
+const operations = document.getElementById('operations');
+const panel = document.getElementById('panel');
+let token = '';
+function node(tag, text, className) {
+  const element = document.createElement(tag);
+  if (text) element.textContent = text;
+  if (className) element.className = className;
+  return element;
+}
+function show(method, path, operation, button) {
+  for (const item of operations.querySelectorAll('button')) item.setAttribute('aria-pressed', String(item === button));
+  const form = node('form');
+  const fields = [];
+  function field(name, type, value) {
+    const label = node('label', name);
+    const input = node(type === 'textarea' ? 'textarea' : 'input');
+    if (type !== 'textarea') input.type = type;
+    input.value = value || '';
+    label.append(input);
+    form.append(label);
+    return input;
+  }
+  for (const param of operation.parameters || []) {
+    const input = field(param.name, 'text');
+    input.required = Boolean(param.required);
+    fields.push([param, input]);
+  }
+  const auth = operation.security?.length === 0 ? null : field('Gateway API key (if configured)', 'password', token);
+  if (auth) auth.addEventListener('input', () => { token = auth.value; });
+  const example = operation.requestBody?.content['application/json']?.example;
+  const body = example ? field('JSON request body', 'textarea', JSON.stringify(example, null, 2)) : null;
+  const execute = node('button', 'Send request', 'execute');
+  const output = node('pre', 'The live response will appear here.');
+  output.setAttribute('aria-live', 'polite');
+  form.append(execute);
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    execute.disabled = true;
+    output.textContent = 'Sending…';
+    try {
+      let endpoint = path;
+      const headers = {};
+      for (const [param, input] of fields) {
+        if (param.in === 'path') endpoint = endpoint.replace('{' + param.name + '}', encodeURIComponent(input.value));
+        if (param.in === 'header' && input.value) headers[param.name] = input.value;
+      }
+      if (body) headers['Content-Type'] = 'application/json';
+      if (auth?.value) headers.Authorization = 'Bearer ' + auth.value;
+      const response = await fetch(endpoint, { method, headers, body: body?.value, redirect: 'error' });
+      const text = await response.text();
+      let formatted = text;
+      if (response.headers.get('Content-Type')?.includes('application/json') && text) {
+        formatted = JSON.stringify(JSON.parse(text), null, 2);
+      }
+      output.textContent = 'HTTP ' + response.status + '\n' + formatted;
+    } catch (error) {
+      output.textContent = error.message;
+    } finally {
+      execute.disabled = false;
+    }
+  });
+  panel.replaceChildren(node('div', method + ' ' + path, 'label'), node('h2', operation.summary),
+    node('p', operation.description), form, output);
+}
+async function load() {
+  const response = await fetch('/openapi.json');
+  if (!response.ok) throw new Error('Could not load the OpenAPI contract.');
+  const spec = await response.json();
+  document.getElementById('version').textContent = 'v' + spec.info.version;
+  for (const tag of spec.tags) {
+    operations.append(node('h2', tag.name));
+    for (const [path, methods] of Object.entries(spec.paths)) {
+      for (const [verb, op] of Object.entries(methods)) {
+        if (!op.tags.includes(tag.name)) continue;
+        const method = verb.toUpperCase();
+        const button = node('button', '', 'operation');
+        button.setAttribute('aria-pressed', 'false');
+        button.append(node('code', method, 'method ' + verb), node('code', path), node('span', op.summary, 'summary'));
+        button.addEventListener('click', () => show(method, path, op, button));
+        operations.append(button);
+      }
+    }
+  }
+  operations.querySelector('button').click();
+}
+load().catch(error => panel.replaceChildren(node('p', error.message)));
+</script>
+</body>
+</html>

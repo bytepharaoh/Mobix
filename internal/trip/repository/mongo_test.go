@@ -18,10 +18,13 @@ import (
 func setupTestDB(t *testing.T) (Repository, func()) {
 	t.Helper()
 
+	if testing.Short() {
+		t.Skip("requires Docker")
+	}
 	ctx := context.Background()
 
 	// start a real MongoDB container using Docker
-	container, err := mongodb.Run(ctx, "mongo:7")
+	container, err := mongodb.Run(ctx, "mongo:8.0")
 	if err != nil {
 		t.Fatalf("failed to start mongodb container: %v", err)
 	}
@@ -245,7 +248,7 @@ func TestUpdateStatus(t *testing.T) {
 			defer cleanup()
 
 			id := tt.setup(repo)
-			err := repo.UpdateStatus(context.Background(), id, tt.newStatus)
+			_, err := repo.Transition(context.Background(), id, domain.StatusRequested, tt.newStatus, bson.NewObjectID().Hex(), nil)
 
 			if tt.wantErr {
 				if err == nil {

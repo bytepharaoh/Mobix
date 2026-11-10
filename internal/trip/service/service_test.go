@@ -2,8 +2,8 @@ package service
 
 import (
 	"context"
+	"github.com/bytepharaoh/Mobix/pkg/messaging"
 	"testing"
-	"time"
 
 	"go.uber.org/mock/gomock"
 
@@ -32,12 +32,7 @@ func TestCreateTrip(t *testing.T) {
 			mock: func(repo *mocks.MockRepository) {
 				repo.EXPECT().
 					Create(gomock.Any(), gomock.Any()).
-					Return(&domain.Trip{
-						RiderID:   "rider123",
-						Status:    domain.StatusRequested,
-						CreatedAt: time.Now(),
-						UpdatedAt: time.Now(),
-					}, nil)
+					DoAndReturn(func(_ context.Context, trip *domain.Trip) (*domain.Trip, error) { return trip, nil })
 			},
 			wantErr: false,
 		},
@@ -51,9 +46,10 @@ func TestCreateTrip(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "fails when pickup is missing",
+			name: "fails when pickup is outside coordinate range",
 			req: domain.CreateTripRequest{
 				RiderID: "rider123",
+				Pickup:  domain.Location{Lat: 100},
 				Dropoff: domain.Location{Lat: 30.1, Lng: 31.1},
 			},
 			mock:    func(repo *mocks.MockRepository) {},
@@ -67,7 +63,7 @@ func TestCreateTrip(t *testing.T) {
 			tt.mock(mockRepo)
 
 			svc := New(mockRepo)
-			result, err := svc.CreateTrip(context.Background(), tt.req)
+			result, err := svc.CreateTrip(context.Background(), tt.req, "demo-key")
 
 			if tt.wantErr {
 				if err == nil {
@@ -81,6 +77,9 @@ func TestCreateTrip(t *testing.T) {
 				return
 			}
 
+			if result.Pickup != tt.req.Pickup || result.Dropoff != tt.req.Dropoff || result.FareCents < 350 || result.IdempotencyKey == "" {
+				t.Fatalf("incorrect trip: %+v", result)
+			}
 			if result.Status != domain.StatusRequested {
 				t.Errorf("got status %s, want %s", result.Status, domain.StatusRequested)
 			}
@@ -89,6 +88,8 @@ func TestCreateTrip(t *testing.T) {
 }
 
 func TestUpdateTripStatus(t *testing.T) {
+	const driverID = "0123456789abcdef01234567"
+	check := func(context.Context, string) error { return nil }
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -105,11 +106,11 @@ func TestUpdateTripStatus(t *testing.T) {
 			status: domain.StatusAssigned,
 			mock: func(repo *mocks.MockRepository) {
 				repo.EXPECT().
-					FindById(gomock.Any(), "abc123").
+					FindByID(gomock.Any(), "abc123").
 					Return(&domain.Trip{Status: domain.StatusRequested}, nil)
 				repo.EXPECT().
-					UpdateStatus(gomock.Any(), "abc123", domain.StatusAssigned).
-					Return(nil)
+					Transition(gomock.Any(), "abc123", domain.StatusRequested, domain.StatusAssigned, driverID, (*messaging.TripCompleted)(nil)).
+					Return(&domain.Trip{Status: domain.StatusAssigned, DriverID: driverID}, nil)
 			},
 			wantErr: false,
 		},
@@ -119,7 +120,7 @@ func TestUpdateTripStatus(t *testing.T) {
 			status: domain.StatusRequested,
 			mock: func(repo *mocks.MockRepository) {
 				repo.EXPECT().
-					FindById(gomock.Any(), "abc123").
+					FindByID(gomock.Any(), "abc123").
 					Return(&domain.Trip{Status: domain.StatusCompleted}, nil)
 			},
 			wantErr: true,
@@ -130,7 +131,7 @@ func TestUpdateTripStatus(t *testing.T) {
 			status: domain.StatusAssigned,
 			mock: func(repo *mocks.MockRepository) {
 				repo.EXPECT().
-					FindById(gomock.Any(), "notexist").
+					FindByID(gomock.Any(), "notexist").
 					Return(nil, apperrors.ErrNotFound)
 			},
 			wantErr: true,
@@ -150,7 +151,11 @@ func TestUpdateTripStatus(t *testing.T) {
 			tt.mock(mockRepo)
 
 			svc := New(mockRepo)
-			err := svc.UpdateTripStatus(context.Background(), tt.id, tt.status)
+			driver := ""
+			if tt.status == domain.StatusAssigned {
+				driver = driverID
+			}
+			_, err := svc.UpdateTripStatus(context.Background(), tt.id, tt.status, driver, check)
 
 			if tt.wantErr {
 				if err == nil {

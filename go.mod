@@ -6,6 +6,8 @@ require go.mongodb.org/mongo-driver/v2 v2.7.0
 
 require github.com/testcontainers/testcontainers-go/modules/mongodb v0.43.0
 
+require github.com/rabbitmq/amqp091-go v1.10.0
+
 require (
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect

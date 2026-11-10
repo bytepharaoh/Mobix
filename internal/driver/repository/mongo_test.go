@@ -18,10 +18,13 @@ import (
 func setupTestDB(t *testing.T) (Repository, func()) {
 	t.Helper()
 
+	if testing.Short() {
+		t.Skip("requires Docker")
+	}
 	ctx := context.Background()
 
 	// start a real MongoDB container using Docker
-	container, err := mongodb.Run(ctx, "mongo:7")
+	container, err := mongodb.Run(ctx, "mongo:8.0")
 	if err != nil {
 		t.Fatalf("failed to start mongodb container: %v", err)
 	}

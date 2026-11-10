@@ -1,7 +1,12 @@
 package domain
 
 import (
+	"net/mail"
+	"regexp"
+	"strings"
 	"time"
+
+	"github.com/bytepharaoh/Mobix/pkg/geo"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
@@ -16,10 +21,7 @@ const (
 )
 
 // Struct for a location
-type Location struct {
-	Lat float64 `bson:"lat" json:"lat"`
-	Lng float64 `bson:"lng" json:"lng"`
-}
+type Location = geo.Location
 
 // Struct for a driver entity
 type Driver struct {
@@ -33,7 +35,7 @@ type Driver struct {
 	Status      DriverStatus  `bson:"status" json:"status"`
 	LastLoginAt time.Time     `bson:"last_login_at" json:"lastLoginAt"`
 	Rating      float64       `bson:"rating" json:"rating"`
-	TotalTrips  int           `bson:"total_trips" json:"totalTrips"`
+	TotalTrips  int           `bson:"total_trips" json:"-"`
 	CreatedAt   time.Time     `bson:"created_at" json:"createdAt"`
 	UpdatedAt   time.Time     `bson:"updated_at" json:"updatedAt"`
 }
@@ -47,31 +49,28 @@ type CreateDriverRequest struct {
 	Location  Location `json:"location"`
 }
 
+var phonePattern = regexp.MustCompile(`^\+[1-9][0-9]{7,14}$`)
+var platePattern = regexp.MustCompile(`^[A-Z0-9][A-Z0-9 -]{1,19}$`)
+
 func (r *CreateDriverRequest) Validate() error {
-	// Location validation
-	if r.Location.Lat == 0 && r.Location.Lng == 0 {
+	if !r.Location.Valid() {
 		return ErrInvalidLocation
 	}
-	// Name validation
-	if r.Name == "" {
+	if strings.TrimSpace(r.Name) == "" || len(r.Name) > 100 {
 		return ErrInvalidName
 	}
-	// Car model validation
-	if r.CarModel == "" {
+	if strings.TrimSpace(r.CarModel) == "" || len(r.CarModel) > 100 {
 		return ErrInvalidCarModel
 	}
-	// Email validation
-	if r.Email == "" {
+	address, err := mail.ParseAddress(r.Email)
+	if err != nil || address.Address != r.Email || len(r.Email) > 254 {
 		return ErrInvalidEmail
 	}
-	// Phone validation
-	if r.Phone == "" {
+	if !phonePattern.MatchString(r.Phone) {
 		return ErrInvalidPhoneNumber
 	}
-	// Car number validation
-	if r.CarNumber == "" {
+	if !platePattern.MatchString(r.CarNumber) {
 		return ErrInvalidCarNumber
 	}
-
 	return nil
 }

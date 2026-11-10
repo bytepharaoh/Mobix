@@ -36,3 +36,6 @@ go.work.sum
 bin/
 coverage.out
 coverage.html
+
+# Local Kubernetes credential file
+/mobix-dependencies.env
