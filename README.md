@@ -85,7 +85,7 @@ For a deployment with external dependencies, use [the base manifests](deployment
 | `trip-mongo-uri`, `driver-mongo-uri`, `payment-mongo-uri` | MongoDB connection strings. Give each service access to its own collections and required index operations. |
 | `trip-rabbitmq-url`, `payment-rabbitmq-url` | AMQP connection strings scoped to the Mobix queues and their declaration permissions. |
 
-The gateway Service is cluster-local. The internal HTTP ingress policies require a CNI that enforces NetworkPolicy. Use TLS and an identity-aware ingress for shared environments. The demo uses single-node infrastructure and development credentials. Dispatch is manual, payments are simulated, and the bearer token grants operator-level access. A public rider or driver deployment requires per-user authentication and resource authorization.
+The gateway Service is cluster-local. The internal HTTP ingress policies require a CNI that enforces NetworkPolicy. Use TLS and an identity-aware ingress for shared environments. The demo uses single-node infrastructure and development credentials. Its MongoDB container lets glibc own rseq for compatibility with affected Linux kernels. [MongoDB container compatibility notes](https://github.com/docker-library/mongo/issues/765) Dispatch is manual, payments are simulated, and the bearer token grants operator-level access. A public rider or driver deployment requires per-user authentication and resource authorization.
 
 ## Development and verification
 

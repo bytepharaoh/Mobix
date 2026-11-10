@@ -95,6 +95,8 @@ services:
     image: mongo:8.0
     restart: unless-stopped
     environment:
+      # Keep MongoDB 8 demo containers usable on kernels affected by SERVER-121912.
+      GLIBC_TUNABLES: glibc.pthread.rseq=1
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-admin}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-password}
     volumes:

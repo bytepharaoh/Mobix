@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/bytepharaoh/Mobix/pkg/messaging"
+	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/mongodb"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -20,7 +21,9 @@ func TestRecordDeduplicatesConcurrentDeliveries(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	container, err := mongodb.Run(ctx, "mongo:8.0")
+	// Let glibc own rseq so MongoDB's allocator avoids the affected Linux kernel path.
+	container, err := mongodb.Run(ctx, "mongo:8.0",
+		testcontainers.WithEnv(map[string]string{"GLIBC_TUNABLES": "glibc.pthread.rseq=1"}))
 	if err != nil {
 		t.Fatal(err)
 	}
