@@ -4,7 +4,7 @@ Mobix is a Go backend for a ride-sharing workflow. Register a driver, request a 
 
 ## Quick start
 
-Install Docker with Compose v2, Bash, `make`, `curl`, and `jq`. From a clone of this repository, run:
+Install Docker with Compose v2, Bash, `make`, `curl`, and `jq`. Run these commands from your clone.
 
 ```sh
 make up
@@ -13,7 +13,7 @@ make demo
 
 Open the [API explorer](http://127.0.0.1:8080/docs) to send requests against the running gateway. Replace the example driver details on repeat runs and use the IDs returned by the API for follow-up requests. The demo creates a new driver and ride, completes the ride, and waits for the receipt. The [OpenAPI contract](api/openapi/mobix.json) is also served at `/openapi.json`.
 
-The Compose gateway binds to `127.0.0.1`. To use a different port and require a local bearer token:
+The Compose gateway binds to `127.0.0.1`. Set these variables to use a different port and require a local bearer token.
 
 ```sh
 export GATEWAY_PORT=18080
@@ -71,13 +71,13 @@ kubectl --context kind-mobix -n mobix rollout status deployment/gateway --timeou
 kubectl --context kind-mobix -n mobix port-forward service/gateway 18081:8080
 ```
 
-In another terminal:
+Run the demo in another terminal.
 
 ```sh
 MOBIX_URL=http://127.0.0.1:18081 MOBIX_API_KEY=mobix-demo-key make demo
 ```
 
-For a deployment with external dependencies, use [the base manifests](deployments/k8s/base) in an environment-specific Kustomize overlay. Set the four images to immutable registry references and provide a `mobix-dependencies` Secret in the `mobix` namespace with these keys:
+For a deployment with external dependencies, use [the base manifests](deployments/k8s/base) in an environment-specific Kustomize overlay. Set the four images to immutable registry references and provide a `mobix-dependencies` Secret in the `mobix` namespace with the keys below.
 
 | Keys | Values |
 | --- | --- |
