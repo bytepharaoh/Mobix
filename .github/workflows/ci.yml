@@ -35,6 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
+      DISPATCH_OFFER_TTL: 7s
       MOBIX_INTERNAL_KEY: mobix-ci-internal-signing-key-for-isolated-tests
       MOBIX_BOOTSTRAP_EMAIL: operator@mobix.test
       MOBIX_BOOTSTRAP_PASSWORD: mobix-ci-operator-password
@@ -50,6 +51,7 @@ jobs:
           kubectl kustomize deployments/k8s/demo >/dev/null
       - run: make up
       - run: make demo
+      - run: make dispatch-demo
       - run: make verify
       - name: Print service logs on failure
         if: failure()

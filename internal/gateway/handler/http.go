@@ -55,7 +55,8 @@ func New(trip, driver, payment *url.URL, auth *accounts.Service, delegation auth
 	}
 	register("driver", driver, "POST /v1/drivers", "GET /v1/drivers/me", "GET /v1/drivers/{id}",
 		"PATCH /v1/drivers/{id}/availability", "PATCH /v1/drivers/{id}/location")
-	register("trip", trip, "GET /v1/drivers/{id}/activity", "POST /v1/trips", "GET /v1/trips/{id}", "PATCH /v1/trips/{id}/status")
+	register("trip", trip, "GET /v1/drivers/{id}/activity", "POST /v1/trips", "GET /v1/trips/{id}", "PATCH /v1/trips/{id}/status",
+		"GET /v1/drivers/me/offers", "POST /v1/trips/{id}/offers/{offerID}/accept", "POST /v1/trips/{id}/offers/{offerID}/decline")
 	register("payment", payment, "GET /v1/payments/{tripID}")
 	mux.HandleFunc("/v1/", func(w http.ResponseWriter, r *http.Request) {
 		httpapi.Error(w, apperrors.ErrNotFound)

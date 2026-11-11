@@ -39,6 +39,7 @@ func (s *TripService) CreateTrip(ctx context.Context, req domain.CreateTripReque
 		return nil, apperrors.ErrInvalidInput
 	}
 	trip := &domain.Trip{
+		Dispatch:       domain.NewDispatch(time.Now()),
 		RiderID:        req.RiderID,
 		RiderAccountID: actor.ID,
 		Pickup:         req.Pickup,

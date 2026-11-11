@@ -35,3 +35,10 @@ var (
 )
 
 var ErrDriverAssigned = apperrors.New(http.StatusConflict, "DRIVER_ASSIGNED", "The driver already has an active trip")
+
+var (
+	ErrOfferNotFound = apperrors.New(http.StatusNotFound, "OFFER_NOT_FOUND", "This ride offer was not found")
+	ErrOfferExpired  = apperrors.New(http.StatusConflict, "OFFER_EXPIRED", "This ride offer has expired")
+	ErrOfferTaken    = apperrors.New(http.StatusConflict, "OFFER_TAKEN", "The ride has already been assigned")
+	ErrOfferClosed   = apperrors.New(http.StatusConflict, "OFFER_CLOSED", "This ride offer is closed")
+)

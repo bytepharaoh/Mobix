@@ -29,6 +29,7 @@ type Location = geo.Location
 // Trip is the core domain object for the trip service.
 // One Trip = one document in MongoDB = one ride from request to completion.
 type Trip struct {
+	Dispatch             *Dispatch                `bson:"dispatch,omitempty" json:"-"`
 	RiderAccountID       string                   `bson:"rider_account_id,omitempty" json:"-"`
 	DriverAccountID      string                   `bson:"driver_account_id,omitempty" json:"-"`
 	ScopedIdempotencyKey string                   `bson:"scoped_idempotency_key,omitempty" json:"-"`

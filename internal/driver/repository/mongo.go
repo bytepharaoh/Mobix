@@ -27,6 +27,9 @@ func (r *MongoRepository) Create(ctx context.Context, driver *domain.Driver) (*d
 	now := time.Now()
 	driver.UpdatedAt = now
 	driver.CreatedAt = now
+	driver.LocationUpdatedAt = now
+	point := driver.Location.Point()
+	driver.LocationPoint = &point
 	driver.ID = bson.NewObjectID()
 	if _, err := r.collection.InsertOne(ctx, driver); err != nil {
 		if mongo.IsDuplicateKeyError(err) {
@@ -164,6 +167,9 @@ func (r *MongoRepository) EnsureIndexes(ctx context.Context) error {
 	indexes := []mongo.IndexModel{{
 		Keys:    bson.D{{Key: "account_id", Value: 1}},
 		Options: options.Index().SetName("unique_driver_account").SetUnique(true).SetSparse(true),
+	}, {
+		Keys:    bson.D{{Key: "location_point", Value: "2dsphere"}},
+		Options: options.Index().SetName("driver_location_sphere"),
 	}}
 	for _, field := range []string{"email", "phone", "car_number"} {
 		indexes = append(indexes, mongo.IndexModel{
@@ -182,8 +188,11 @@ func (r *MongoRepository) UpdateLocation(ctx context.Context, id string, locatio
 	if err != nil {
 		return apperrors.ErrInvalidInput
 	}
-	result, err := r.collection.UpdateOne(ctx, bson.M{"_id": objectID},
-		bson.M{"$set": bson.M{"location": location, "updated_at": time.Now().UTC()}})
+	now := time.Now().UTC()
+	result, err := r.collection.UpdateOne(ctx, bson.M{"_id": objectID}, bson.M{"$set": bson.M{
+		"location": location, "location_point": location.Point(),
+		"location_updated_at": now, "updated_at": now,
+	}})
 	if err != nil {
 		return fmt.Errorf("update driver location: %w", err)
 	}
@@ -203,4 +212,38 @@ func (r *MongoRepository) FindByAccountID(ctx context.Context, accountID string)
 		return nil, fmt.Errorf("find driver account: %w", err)
 	}
 	return &driver, nil
+}
+
+func (r *MongoRepository) Candidates(ctx context.Context, search domain.CandidateSearch) ([]domain.Candidate, error) {
+	near := bson.M{
+		"near": search.Pickup.Point(), "key": "location_point",
+		"spherical": true, "distanceField": "distance_meters", "maxDistance": search.RadiusMeters,
+		"query": bson.M{
+			"status":              domain.StatusAvailable,
+			"account_id":          bson.M{"$gt": ""},
+			"location_updated_at": bson.M{"$gte": search.FreshAfter},
+		},
+	}
+	pipeline := mongo.Pipeline{bson.D{{Key: "$geoNear", Value: near}}}
+	if after := search.After; after != nil {
+		near["minDistance"] = after.DistanceMeters
+		pipeline = append(pipeline, bson.D{{Key: "$match", Value: bson.M{"$or": bson.A{
+			bson.M{"distance_meters": bson.M{"$gt": after.DistanceMeters}},
+			bson.M{"distance_meters": after.DistanceMeters, "_id": bson.M{"$gt": after.ID}},
+		}}}})
+	}
+	pipeline = append(pipeline,
+		bson.D{{Key: "$sort", Value: bson.D{{Key: "distance_meters", Value: 1}, {Key: "_id", Value: 1}}}},
+		bson.D{{Key: "$limit", Value: domain.CandidatePageSize}},
+		bson.D{{Key: "$project", Value: bson.M{"account_id": 1, "distance_meters": 1}}},
+	)
+	cursor, err := r.collection.Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, fmt.Errorf("search nearby drivers: %w", err)
+	}
+	candidates := make([]domain.Candidate, 0, domain.CandidatePageSize)
+	if err := cursor.All(ctx, &candidates); err != nil {
+		return nil, fmt.Errorf("decode nearby drivers: %w", err)
+	}
+	return candidates, nil
 }

@@ -25,20 +25,22 @@ type Location = geo.Location
 
 // Struct for a driver entity
 type Driver struct {
-	AccountID   string        `bson:"account_id,omitempty" json:"-"`
-	ID          bson.ObjectID `bson:"_id,omitempty" json:"id"`
-	Name        string        `bson:"name" json:"name"`
-	Email       string        `bson:"email" json:"email"`
-	Phone       string        `bson:"phone" json:"phone"`
-	CarNumber   string        `bson:"car_number" json:"carNumber"`
-	CarModel    string        `bson:"car_model" json:"carModel"`
-	Location    Location      `bson:"location" json:"location"`
-	Status      DriverStatus  `bson:"status" json:"status"`
-	LastLoginAt time.Time     `bson:"last_login_at" json:"lastLoginAt"`
-	Rating      float64       `bson:"rating" json:"rating"`
-	TotalTrips  int           `bson:"total_trips" json:"-"`
-	CreatedAt   time.Time     `bson:"created_at" json:"createdAt"`
-	UpdatedAt   time.Time     `bson:"updated_at" json:"updatedAt"`
+	LocationPoint     *geo.Point    `bson:"location_point,omitempty" json:"-"`
+	LocationUpdatedAt time.Time     `bson:"location_updated_at,omitempty" json:"-"`
+	AccountID         string        `bson:"account_id,omitempty" json:"-"`
+	ID                bson.ObjectID `bson:"_id,omitempty" json:"id"`
+	Name              string        `bson:"name" json:"name"`
+	Email             string        `bson:"email" json:"email"`
+	Phone             string        `bson:"phone" json:"phone"`
+	CarNumber         string        `bson:"car_number" json:"carNumber"`
+	CarModel          string        `bson:"car_model" json:"carModel"`
+	Location          Location      `bson:"location" json:"location"`
+	Status            DriverStatus  `bson:"status" json:"status"`
+	LastLoginAt       time.Time     `bson:"last_login_at" json:"lastLoginAt"`
+	Rating            float64       `bson:"rating" json:"rating"`
+	TotalTrips        int           `bson:"total_trips" json:"-"`
+	CreatedAt         time.Time     `bson:"created_at" json:"createdAt"`
+	UpdatedAt         time.Time     `bson:"updated_at" json:"updatedAt"`
 }
 
 type CreateDriverRequest struct {
@@ -78,6 +80,7 @@ func (r *CreateDriverRequest) Validate() error {
 
 // DispatchProfile is shared with the trip service through its authenticated lookup.
 type DispatchProfile struct {
-	AccountID string       `json:"account_id"`
-	Status    DriverStatus `json:"status"`
+	LocationUpdatedAt time.Time    `json:"location_updated_at"`
+	AccountID         string       `json:"account_id"`
+	Status            DriverStatus `json:"status"`
 }
