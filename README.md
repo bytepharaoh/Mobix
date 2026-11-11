@@ -51,15 +51,27 @@ The running API explorer and a receipt retrieved from a completed demo ride.
 
 The **gateway** exposes the HTTP API. **Driver** manages registration, declared availability and location. **Trip** owns dispatch, the fare estimate, the state machine and driver activity derived from trip history. **Payment** consumes completion events and writes receipts to its own MongoDB database.
 
+![Mobix service architecture showing HTTP calls, RabbitMQ events, and MongoDB access](docs/screenshots/Mobix%20Service%20Architecture%20Diagram.png)
+
+*The gateway and services communicate over HTTP. RabbitMQ carries trip completion events to the payment service. The driver records shown in the diagram live in the `driver` collection.*
+
 Trip state changes use a conditional MongoDB update. A partial unique index allows a driver to appear on one assigned or in-progress trip at a time. The driver service supplies the availability snapshot used during dispatch. Going offline opts out of future dispatch checks while an existing assignment remains active. Fare estimates use straight-line distance, a $3.50 base fare, and $1.20 per kilometer, rounded to cents.
 
 Completing a trip writes its payment event into the trip document atomically. The publisher removes the pending event after RabbitMQ confirms delivery to the durable queue. During a broker outage the event stays in MongoDB, including across trip-service restarts. Delivery is at least once, and MongoDB enforces one receipt per trip. The consumer acknowledges after recording a receipt and sends malformed messages to the dead-letter queue.
+
+![Illustrated sequence from ride request through asynchronous payment processing](docs/screenshots/Ride%20Request%20to%20Payment%20Receipt%20Flow.png)
+
+*The sequence uses illustrative endpoint labels. In Mobix, `POST /v1/trips` creates the ride and `PATCH /v1/trips/{id}/status` handles assignment, start, and completion. Trip checks availability through `GET /v1/drivers/{id}`. The gateway sends `GET /v1/payments/{tripID}` to Payment for the `simulated_paid` receipt.*
 
 `GET /health` checks process liveness. `GET /ready` checks the backend HTTP services and their MongoDB connections. A broker outage can delay receipts while the gateway stays ready. Inspect trip and payment logs, the `pending_payment` fields in MongoDB, and the RabbitMQ queue `mobix.payment.trip-completed.v1` and its `.dead` counterpart when investigating a backlog.
 
 ## Kubernetes
 
 For a local demo, build the four app images with Docker Compose and load them into a local [kind](https://kind.sigs.k8s.io/) cluster. Use a cluster with a default StorageClass for the MongoDB and RabbitMQ volumes.
+
+![Single-node kind deployment with Go services, MongoDB, RabbitMQ, and persistent storage](docs/screenshots/Mobix%20Kubernetes%20Architecture%20Diagram.png)
+
+*The local kind overlay runs four Go Deployments and gives MongoDB and RabbitMQ their own persistent volumes. Kustomize generates the Secret from `mobix-dependencies`, and the broker connection uses `RABBITMQ_URL`.*
 
 ```sh
 docker compose build --provenance=false
@@ -101,6 +113,12 @@ make k8s-render  # render the local Kubernetes overlay
 ```
 
 Run `make verify` against a local test stack. It stops and restarts RabbitMQ and restarts the trip service while a payment event is pending. GitHub Actions runs the Go checks, a fresh Compose demo, the outage test, and Kustomize rendering on pull requests.
+
+## Roadmap
+
+![Proposed internal gRPC architecture with REST at the gateway and RabbitMQ for trip events](docs/screenshots/Mobix%20Internal%20gRPC%20Roadmap.png)
+
+*The proposed design adds Protocol Buffers contracts and unary gRPC for internal calls. Clients would continue to use REST through the gateway, and RabbitMQ would continue to carry trip completion events.*
 
 ## License
 
