@@ -15,6 +15,7 @@ type Repository interface {
 	FindByAccountID(context.Context, string) (*domain.Driver, error)
 	UpdateStatus(context.Context, string, domain.DriverStatus) error
 	UpdateLocation(context.Context, string, domain.Location) error
+	Candidates(context.Context, domain.CandidateSearch) ([]domain.Candidate, error)
 }
 
 type Service struct{ repo Repository }
@@ -71,7 +72,7 @@ func (s *Service) DispatchProfile(ctx context.Context, id string) (domain.Dispat
 	if err != nil {
 		return domain.DispatchProfile{}, err
 	}
-	return domain.DispatchProfile{AccountID: profile.AccountID, Status: profile.Status}, nil
+	return domain.DispatchProfile{AccountID: profile.AccountID, Status: profile.Status, LocationUpdatedAt: profile.LocationUpdatedAt}, nil
 }
 
 func (s *Service) SetAvailability(ctx context.Context, id string, status domain.DriverStatus) error {
@@ -100,4 +101,16 @@ func (s *Service) requireDriverOwner(ctx context.Context, id string) error {
 	}
 	_, err := s.Get(ctx, id)
 	return err
+}
+
+func (s *Service) Candidates(ctx context.Context, search domain.CandidateSearch) ([]domain.Candidate, error) {
+	if authn.From(ctx).Role != authn.Service {
+		return nil, apperrors.ErrForbidden
+	}
+	if !search.Pickup.Valid() || search.FreshAfter.IsZero() ||
+		search.RadiusMeters < 1 || search.RadiusMeters > domain.MaxDispatchRadiusMeters ||
+		(search.After != nil && (search.After.ID.IsZero() || search.After.DistanceMeters < 0 || search.After.DistanceMeters > float64(search.RadiusMeters))) {
+		return nil, apperrors.ErrInvalidInput
+	}
+	return s.repo.Candidates(ctx, search)
 }

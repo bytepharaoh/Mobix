@@ -21,6 +21,7 @@ import (
 	paymenthandler "github.com/bytepharaoh/Mobix/internal/payment/handler"
 	paymentrepo "github.com/bytepharaoh/Mobix/internal/payment/repository"
 	tripdomain "github.com/bytepharaoh/Mobix/internal/trip/domain"
+	"github.com/bytepharaoh/Mobix/internal/trip/driverclient"
 	triphandler "github.com/bytepharaoh/Mobix/internal/trip/handler"
 	triprepo "github.com/bytepharaoh/Mobix/internal/trip/repository"
 	tripservice "github.com/bytepharaoh/Mobix/internal/trip/service"
@@ -106,7 +107,7 @@ func TestAuthenticatedRideAccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	tripMux := httpapi.Mux("trip", ready)
-	triphandler.Register(tripMux, tripservice.New(tripRepository), tripRepository, accessURL(t, driver.URL), delegation)
+	triphandler.Register(tripMux, tripservice.New(tripRepository), tripRepository, driverclient.New(accessURL(t, driver.URL), delegation))
 	trip := httptest.NewServer(delegation.Protect("trip", tripMux))
 	t.Cleanup(trip.Close)
 	payments := paymentrepo.New(client.Database("mobix_http_payment_test"))

@@ -2,14 +2,11 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"net/http"
-	"net/url"
-	"time"
 
 	driver "github.com/bytepharaoh/Mobix/internal/driver/domain"
 	"github.com/bytepharaoh/Mobix/internal/trip/domain"
+	"github.com/bytepharaoh/Mobix/internal/trip/driverclient"
 	"github.com/bytepharaoh/Mobix/internal/trip/service"
 	"github.com/bytepharaoh/Mobix/pkg/authn"
 	apperrors "github.com/bytepharaoh/Mobix/pkg/errors"
@@ -22,34 +19,9 @@ type DriverActivityReader interface {
 	DriverActivity(context.Context, string) (domain.DriverActivity, error)
 }
 
-func Register(mux *http.ServeMux, trips *service.TripService, activity DriverActivityReader, driverURL *url.URL, delegation authn.Delegation) {
-	client := &http.Client{Timeout: 3 * time.Second}
-	driverStatus := func(ctx context.Context, id string) (driver.DispatchProfile, error) {
-		request, err := http.NewRequestWithContext(ctx, http.MethodGet, driverURL.JoinPath("internal", "drivers", id, "dispatch-profile").String(), nil)
-		if err != nil {
-			return driver.DispatchProfile{}, fmt.Errorf("build driver request: %w", err)
-		}
-		delegation.Sign(request, "driver", authn.Actor{Role: authn.Service})
-		response, err := client.Do(request)
-		if err != nil {
-			return driver.DispatchProfile{}, apperrors.ErrUnavailable
-		}
-		defer response.Body.Close()
-		switch response.StatusCode {
-		case http.StatusNotFound:
-			return driver.DispatchProfile{}, driver.ErrDriverNotFound
-		case http.StatusOK:
-			var value driver.DispatchProfile
-			if err := json.NewDecoder(response.Body).Decode(&value); err != nil {
-				return driver.DispatchProfile{}, apperrors.ErrUnavailable
-			}
-			return value, nil
-		default:
-			return driver.DispatchProfile{}, apperrors.ErrUnavailable
-		}
-	}
+func Register(mux *http.ServeMux, trips *service.TripService, activity DriverActivityReader, drivers *driverclient.Client) {
 	checkDriver := func(ctx context.Context, id string) (string, error) {
-		status, err := driverStatus(ctx, id)
+		status, err := drivers.Profile(ctx, id)
 		if err != nil {
 			return "", err
 		}
@@ -64,7 +36,7 @@ func Register(mux *http.ServeMux, trips *service.TripService, activity DriverAct
 			httpapi.Error(w, apperrors.ErrInvalidInput)
 			return
 		}
-		availability, err := driverStatus(r.Context(), id.Hex())
+		availability, err := drivers.Profile(r.Context(), id.Hex())
 		if err != nil {
 			httpapi.Error(w, err)
 			return

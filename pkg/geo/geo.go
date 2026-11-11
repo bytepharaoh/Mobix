@@ -33,3 +33,13 @@ func Kilometers(a, b Location) float64 {
 		math.Cos(a.Lat*radians)*math.Cos(b.Lat*radians)*math.Pow(math.Sin(dlng/2), 2)
 	return 6371 * 2 * math.Asin(math.Sqrt(min(1, h)))
 }
+
+// Point encodes the GeoJSON coordinate order used by geospatial indexes.
+type Point struct {
+	Type        string     `bson:"type"`
+	Coordinates [2]float64 `bson:"coordinates"`
+}
+
+func (p Location) Point() Point {
+	return Point{Type: "Point", Coordinates: [2]float64{p.Lng, p.Lat}}
+}

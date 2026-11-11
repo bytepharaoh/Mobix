@@ -3,7 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"sync"
 
+	"github.com/bytepharaoh/Mobix/internal/trip/dispatch"
+	"github.com/bytepharaoh/Mobix/internal/trip/driverclient"
 	"github.com/bytepharaoh/Mobix/internal/trip/handler"
 	"github.com/bytepharaoh/Mobix/internal/trip/repository"
 	"github.com/bytepharaoh/Mobix/internal/trip/service"
@@ -34,17 +37,22 @@ func run(ctx context.Context) error {
 	if err := repo.EnsureIndexes(ctx); err != nil {
 		return fmt.Errorf("prepare trip indexes: %w", err)
 	}
+	matchingConfig, err := dispatch.LoadConfig()
+	if err != nil {
+		return err
+	}
+	drivers := driverclient.New(driverURL, delegation)
+	matcher := dispatch.New(repo, drivers, matchingConfig)
 	worker, cancel := context.WithCancel(ctx)
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		messaging.RunPublisher(worker, config.RabbitURL(), repo)
-	}()
+	var workers sync.WaitGroup
+	workers.Go(func() { messaging.RunPublisher(worker, config.RabbitURL(), repo) })
+	workers.Go(func() { matcher.Run(worker) })
 	defer func() {
 		cancel()
-		<-done
+		workers.Wait()
 	}()
 	mux := httpapi.Mux("trip", func(ctx context.Context) error { return database.Client().Ping(ctx, nil) })
-	handler.Register(mux, service.New(repo), repo, driverURL, delegation)
+	handler.Register(mux, service.New(repo), repo, drivers)
+	handler.RegisterOffers(mux, matcher)
 	return httpapi.Run(ctx, config.GetString("TRIP_HTTP_PORT", "8082"), delegation.Protect("trip", mux))
 }

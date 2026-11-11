@@ -10,6 +10,19 @@ import (
 )
 
 func Register(mux *http.ServeMux, drivers *service.Service) {
+	mux.HandleFunc("POST /internal/dispatch/candidates", func(w http.ResponseWriter, r *http.Request) {
+		var search domain.CandidateSearch
+		if err := httpapi.Decode(w, r, &search); err != nil {
+			httpapi.Error(w, err)
+			return
+		}
+		candidates, err := drivers.Candidates(r.Context(), search)
+		if err != nil {
+			httpapi.Error(w, err)
+			return
+		}
+		httpapi.JSON(w, http.StatusOK, candidates)
+	})
 	mux.HandleFunc("GET /internal/drivers/{id}/dispatch-profile", func(w http.ResponseWriter, r *http.Request) {
 		profile, err := drivers.DispatchProfile(r.Context(), r.PathValue("id"))
 		if err != nil {

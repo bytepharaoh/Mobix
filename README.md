@@ -1,6 +1,6 @@
 # Mobix
 
-Mobix is a Go backend for a ride-sharing workflow with individual rider, driver, and operator accounts. Register a driver, request a ride, dispatch it to an available driver, and follow it through completion. RabbitMQ delivers completed rides to the payment service, which records a simulated receipt.
+Mobix is a Go backend for a ride-sharing workflow with individual rider, driver, and operator accounts. Register a driver, request a ride, and follow it from nearby driver offers through completion. RabbitMQ delivers completed rides to the payment service, which records a simulated receipt.
 
 ## Quick start
 
@@ -9,10 +9,10 @@ Install Docker with Compose v2, Bash, `make`, `curl`, and `jq`. Run these comman
 ```sh
 cp .env.example .env
 make up
-make demo
+make dispatch-demo
 ```
 
-Open the [API explorer](http://127.0.0.1:8080/docs) and use **Sign in** with the development operator credentials from `.env.example`. A successful sign-in sets the explorer's access token for subsequent requests. The operator can provision accounts, and each rider and driver signs in with their own credentials. The demo provisions a rider and driver, dispatches a ride as the operator, completes it as the assigned driver, and reads the receipt as the rider.
+Open the [API explorer](http://127.0.0.1:8080/docs) and use **Sign in** with the development operator credentials from `.env.example`. A successful sign-in sets the explorer's access token for subsequent requests. The operator can provision accounts, and each rider and driver signs in with their own credentials. The dispatch demo provisions a rider and four drivers. It verifies that three offers expire together, rejects a late acceptance, and completes the ride with the next nearest driver. `make demo` walks through the operator assignment flow.
 
 The Compose gateway binds to `127.0.0.1`. Set these variables to use another port.
 
@@ -20,7 +20,7 @@ The Compose gateway binds to `127.0.0.1`. Set these variables to use another por
 export GATEWAY_PORT=18080
 export MOBIX_URL=http://127.0.0.1:18080
 make up
-make demo
+make dispatch-demo
 ```
 
 Compose reads the configuration in [`.env.example`](.env.example) through your local `.env` file. The scripts read `MOBIX_URL` and the operator credentials from your shell. When you customize the operator account, export `MOBIX_OPERATOR_EMAIL` and `MOBIX_OPERATOR_PASSWORD` before running `make demo` or `make verify`. Run `make logs` to follow service logs and `make down` to stop the stack while keeping its volumes.
@@ -42,7 +42,8 @@ Send `Authorization: Bearer <access_token>` on protected requests. The [OpenAPI 
 | --- | --- | --- | --- |
 | Create a trip | Own account | — | — |
 | Read a trip | Own trip | Assigned trip | Any trip |
-| Assign a driver | — | — | Allowed |
+| Accept or decline an offer | — | Own open offer | — |
+| Assign a driver manually | — | — | Allowed |
 | Start or complete a trip | — | Assigned driver | — |
 | Cancel before the trip starts | Own trip | — | Any trip |
 | Register or update a driver profile | — | Own profile | — |
@@ -58,12 +59,35 @@ The gateway resolves the session identity and creates a short-lived service-spec
 | Register a driver | `POST /v1/drivers` | A signed-in driver creates one offline profile. Email, phone and license plate are unique. Use `GET /v1/drivers/me` to find your profile later. |
 | Set availability | `PATCH /v1/drivers/{id}/availability` | Accepts `available` or `offline`. Use `PATCH /v1/drivers/{id}/location` to update coordinates. |
 | Request a ride | `POST /v1/trips` | Uses the signed-in rider as the owner, stores pickup and drop-off, and returns an estimated fare in USD cents. An optional `Idempotency-Key` makes create retries safe. |
-| Dispatch | `PATCH /v1/trips/{id}/status` | The operator sends `{"status":"assigned","driver_id":"<id>"}`. The driver must be available and can have one active ride. |
+| Manual dispatch | `PATCH /v1/trips/{id}/status` | The operator sends `{"status":"assigned","driver_id":"<id>"}`. The driver must be available and can have one active ride. |
 | Start and complete | `PATCH /v1/trips/{id}/status` | The assigned driver sends `{"status":"in_progress"}` and then `{"status":"completed"}`. A requested or assigned ride can also be cancelled. |
 | View driver activity | `GET /v1/drivers/{id}/activity` | Returns effective status, an active trip ID when present, and completed trip count. |
 | Read the receipt | `GET /v1/payments/{tripID}` | Returns the simulated payment. Retry briefly on `PAYMENT_NOT_FOUND` after completion. |
 
 Use `GET /v1/trips/{id}` to inspect a ride at any step. Trip creation retry keys are scoped to the signed-in rider. Different riders can use the same key independently. Retrying with the same key and trip details returns the existing trip in its current state. Reusing a key with different details returns HTTP 409. Repeating a transition with the same target state returns the current trip while it is still in that state.
+
+## Automatic dispatch
+
+A new ride starts a background search for available drivers within 8 km of the pickup. The driver service ranks candidates using its MongoDB `2dsphere` index. The matcher skips drivers whose last location report is older than 90 seconds, who already have an active ride, or who already received an offer for this trip. Drivers with older profiles become eligible after reporting a fresh location. [MongoDB geospatial search](https://www.mongodb.com/docs/manual/reference/operator/aggregation/geonear/)
+
+| Driver endpoint | What it does |
+| --- | --- |
+| `GET /v1/drivers/me/offers` | Poll for up to 50 open offers belonging to the signed-in driver. |
+| `POST /v1/trips/{id}/offers/{offerID}/accept` | Accept an open offer. The first valid acceptance assigns the trip. |
+| `POST /v1/trips/{id}/offers/{offerID}/decline` | Decline an open offer. The remaining drivers can still accept. |
+
+The three closest eligible drivers get offers with the same deadline. If all decline, or if the deadline passes, the matcher moves to the next nearest drivers. An acceptance checks the current offer and expiry in the same MongoDB write that assigns the driver. A unique index allows one active ride per driver. If that index rejects an acceptance, the other offers on the ride stay open. Assignment or rider cancellation closes outstanding offers. The driver inbox removes closed offers, and late acceptances get HTTP 409. [MongoDB conditional writes and uniqueness](https://www.mongodb.com/docs/manual/core/write-operations-atomicity/)
+
+Matching runs for up to two minutes with a maximum of 200 offers per trip. Trips without a match stay requested so the rider can cancel or an operator can assign a driver. The matcher retries briefly when no eligible driver is available or Driver is temporarily unavailable.
+
+| Trip service setting | Default | Purpose |
+| --- | --- | --- |
+| `DISPATCH_BATCH_SIZE` | `3` | Maximum drivers invited at once, from 1 to 10 |
+| `DISPATCH_RADIUS_METERS` | `8000` | Search radius, from 1 to 50,000 meters |
+| `DISPATCH_LOCATION_MAX_AGE` | `90s` | Maximum age of a driver location report |
+| `DISPATCH_OFFER_TTL` | `15s` | Time each batch stays open |
+
+Run `make dispatch-demo` on the local demo stack with the default batch size. The script seeds four drivers near a test pickup and leaves them offline after the run.
 
 ## Screenshots
 
@@ -114,7 +138,7 @@ Run the demo in another terminal.
 ```sh
 MOBIX_URL=http://127.0.0.1:18081 \
 MOBIX_OPERATOR_EMAIL=operator@mobix.test \
-MOBIX_OPERATOR_PASSWORD=mobix-demo-operator-password make demo
+MOBIX_OPERATOR_PASSWORD=mobix-demo-operator-password make dispatch-demo
 ```
 
 For a deployment with external dependencies, use [the base manifests](deployments/k8s/base) in an environment-specific Kustomize overlay. Set the four images to immutable registry references and provide a `mobix-dependencies` Secret in the `mobix` namespace with the keys below.
@@ -127,7 +151,7 @@ For a deployment with external dependencies, use [the base manifests](deployment
 | `trip-mongo-uri`, `driver-mongo-uri`, `payment-mongo-uri` | MongoDB connection strings. Give each service access to its own collections and required index operations. |
 | `trip-rabbitmq-url`, `payment-rabbitmq-url` | AMQP connection strings scoped to the Mobix queues and their declaration permissions. |
 
-The gateway Service is cluster-local. The internal HTTP ingress policies require a CNI that enforces NetworkPolicy. Use TLS and an identity-aware ingress for shared environments. The demo uses single-node infrastructure and development credentials. Its MongoDB container lets glibc own rseq for compatibility with affected Linux kernels. Dispatch is manual and payments are simulated. Use unique operator credentials and a random internal signing key in shared deployments. [MongoDB container compatibility notes](https://github.com/docker-library/mongo/issues/765)
+The gateway Service is cluster-local. The internal HTTP ingress policies require a CNI that enforces NetworkPolicy. Use TLS and an identity-aware ingress for shared environments. The demo uses single-node infrastructure and development credentials. Its MongoDB container lets glibc own rseq for compatibility with affected Linux kernels. The demo includes automatic and operator-driven dispatch with simulated payments. Use unique operator credentials and a random internal signing key in shared deployments. [MongoDB container compatibility notes](https://github.com/docker-library/mongo/issues/765)
 
 ## Upgrading from the operator demo
 
@@ -146,11 +170,12 @@ make check       # formatting and vet
 make build       # compile the four services
 make test-unit   # tests without Docker
 make test        # race detector and MongoDB Testcontainers tests
-make verify      # HTTP validation, concurrent dispatch and broker recovery
+make dispatch-demo # automatic offer expiry, next-batch acceptance, and receipt
+make verify        # HTTP authorization, concurrent assignment, and broker recovery
 make k8s-render  # render the local Kubernetes overlay
 ```
 
-Run `make verify` against a local test stack. It stops and restarts RabbitMQ and restarts the trip service while a payment event is pending. The verification script provisions two riders and two drivers, checks cross-account access and role permissions, and confirms recovery after a broker outage. GitHub Actions runs Go authorization and MongoDB integration tests, the Compose demo, the outage test, and Kustomize rendering on pull requests.
+Run `make verify` against a local test stack. It stops and restarts RabbitMQ and restarts the trip service while a payment event is pending. The verification script provisions two riders and two drivers, checks cross-account access and role permissions, and confirms recovery after a broker outage. GitHub Actions runs Go authorization and dispatch race tests against MongoDB, both Compose demos, the outage test, and Kustomize rendering on pull requests.
 
 ## Roadmap
 

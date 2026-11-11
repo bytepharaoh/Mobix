@@ -59,6 +59,10 @@ services:
       <<: [*mongo-env, *rabbit-env, *identity-env]
       MONGO_DB: ${MONGO_DB:-mobix}
       DRIVER_URL: http://driver:8083
+      DISPATCH_BATCH_SIZE: ${DISPATCH_BATCH_SIZE:-3}
+      DISPATCH_RADIUS_METERS: ${DISPATCH_RADIUS_METERS:-8000}
+      DISPATCH_LOCATION_MAX_AGE: ${DISPATCH_LOCATION_MAX_AGE:-90s}
+      DISPATCH_OFFER_TTL: ${DISPATCH_OFFER_TTL:-15s}
     depends_on:
       mongodb: {condition: service_healthy}
       rabbitmq: {condition: service_healthy}

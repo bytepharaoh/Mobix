@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Mobix API",
-    "version": "2.0.0",
-    "description": "Operator-provisioned rider, driver and operator accounts with expiring bearer sessions. Riders own their trips, operators dispatch them, and assigned drivers start and complete them."
+    "version": "2.1.0",
+    "description": "Ride sharing with individual rider, driver, and operator accounts, nearby driver offers, and simulated receipts."
   },
   "servers": [
     {
@@ -19,6 +19,9 @@
     },
     {
       "name": "Trips"
+    },
+    {
+      "name": "Dispatch"
     },
     {
       "name": "Payments"
@@ -847,7 +850,7 @@
         ],
         "operationId": "requestTrip",
         "summary": "Request a ride",
-        "description": "Rider only. The authenticated account supplies rider_id. Idempotency-Key is scoped to this rider. The response includes an estimated fare in USD cents.",
+        "description": "Rider only. The authenticated account supplies rider_id. A new trip starts automatic driver matching. Idempotency-Key is scoped to this rider. The response includes an estimated fare in USD cents.",
         "responses": {
           "201": {
             "description": "Resource created or previous trip returned",
@@ -1052,7 +1055,7 @@
         ],
         "operationId": "transitionTrip",
         "summary": "Transition a trip",
-        "description": "Operators assign drivers. The assigned driver alone starts or completes a trip. Riders and operators may cancel requested or assigned trips. Current-state retries enforce the same permissions.",
+        "description": "Operators can assign a driver manually. Only the assigned driver starts or completes a trip. Riders and operators may cancel requested or assigned trips. Cancellation closes all open offers.",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -1317,6 +1320,258 @@
             }
           }
         }
+      }
+    },
+    "/v1/drivers/me/offers": {
+      "get": {
+        "tags": [
+          "Dispatch"
+        ],
+        "operationId": "getDriverOffers",
+        "summary": "List my ride offers",
+        "description": "Poll as a signed-in driver to see your own pending offers. Assigned, cancelled, expired, and declined offers leave the inbox.",
+        "responses": {
+          "200": {
+            "description": "Up to 50 pending offers ordered by deadline",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DriverOffer"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A valid account session is required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only signed-in drivers can access ride offers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is temporarily unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/trips/{id}/offers/{offerID}/accept": {
+      "post": {
+        "tags": [
+          "Dispatch"
+        ],
+        "operationId": "acceptDriverOffer",
+        "summary": "Accept a ride offer",
+        "description": "Only the invited driver can accept. The first valid acceptance assigns the ride. Retrying the winning offer returns the current trip while the ride is assigned, in progress, or completed.",
+        "responses": {
+          "200": {
+            "description": "The assigned trip",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Trip"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A valid account session is required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only signed-in drivers can access ride offers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is temporarily unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed trip or offer ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The offer is unknown to this driver",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Offer expired, closed, or taken, or the driver already has an active ride",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            }
+          },
+          {
+            "name": "offerID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/trips/{id}/offers/{offerID}/decline": {
+      "post": {
+        "tags": [
+          "Dispatch"
+        ],
+        "operationId": "declineDriverOffer",
+        "summary": "Decline a ride offer",
+        "description": "Decline your own offer. When the whole batch declines, matching can advance immediately.",
+        "responses": {
+          "204": {
+            "description": "Offer declined"
+          },
+          "401": {
+            "description": "A valid account session is required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only signed-in drivers can access ride offers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is temporarily unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed trip or offer ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The offer is unknown to this driver",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Offer expired, closed, or taken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            }
+          },
+          {
+            "name": "offerID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            }
+          }
+        ]
       }
     }
   },
@@ -1771,6 +2026,44 @@
           },
           "account": {
             "$ref": "#/components/schemas/Account"
+          }
+        }
+      },
+      "DriverOffer": {
+        "type": "object",
+        "required": [
+          "id",
+          "trip_id",
+          "pickup",
+          "fare_cents",
+          "currency",
+          "expires_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{24}$"
+          },
+          "trip_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{24}$"
+          },
+          "pickup": {
+            "$ref": "#/components/schemas/Location"
+          },
+          "fare_cents": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "USD"
+            ]
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       }

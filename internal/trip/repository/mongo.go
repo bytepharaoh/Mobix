@@ -42,6 +42,16 @@ func (r *MongoRepository) EnsureIndexes(ctx context.Context) error {
 				SetPartialFilterExpression(bson.M{"scoped_idempotency_key": bson.M{"$type": "string"}}),
 		},
 		{
+			Keys: bson.D{{Key: "status", Value: 1}, {Key: "dispatch.next_attempt_at", Value: 1}},
+			Options: options.Index().SetName("dispatch_due").
+				SetPartialFilterExpression(bson.M{"dispatch.next_attempt_at": bson.M{"$type": "date"}}),
+		},
+		{
+			Keys: bson.D{{Key: "dispatch.offers.account_id", Value: 1}, {Key: "dispatch.batch_expires_at", Value: 1}},
+			Options: options.Index().SetName("driver_offer_inbox").
+				SetPartialFilterExpression(bson.M{"status": domain.StatusRequested}),
+		},
+		{
 			Keys:    bson.D{{Key: "pending_payment.occurred_at", Value: 1}},
 			Options: options.Index().SetName("pending_payments").SetSparse(true),
 		},
@@ -107,7 +117,7 @@ func (r *MongoRepository) Transition(ctx context.Context, id string, expected *d
 			"rider_account_id":  storedAccount(expected.RiderAccountID),
 			"driver_account_id": storedAccount(expected.DriverAccountID),
 		},
-		bson.M{"$set": fields},
+		bson.M{"$set": fields, "$unset": bson.M{"dispatch.next_attempt_at": ""}},
 		options.FindOneAndUpdate().SetReturnDocument(options.After),
 	).Decode(&updated)
 	switch {
