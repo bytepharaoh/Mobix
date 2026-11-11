@@ -28,6 +28,13 @@ spec:
           image: mobix/payment:local
           imagePullPolicy: IfNotPresent
           env:
+            - name: MOBIX_INTERNAL_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mobix-dependencies
+                  key: internal-signing-key
+            - name: TRIP_URL
+              value: http://trip:8082
             - name: MONGO_DB
               value: "mobix_payment"
             - name: MONGO_URI

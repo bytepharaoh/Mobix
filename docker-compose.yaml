@@ -10,6 +10,9 @@ x-mongo-env: &mongo-env
   MONGO_USER: ${MONGO_USER:-admin}
   MONGO_PASSWORD: ${MONGO_PASSWORD:-password}
 
+x-identity-env: &identity-env
+  MOBIX_INTERNAL_KEY: ${MOBIX_INTERNAL_KEY:-}
+
 x-rabbit-env: &rabbit-env
   RABBITMQ_HOST: rabbitmq
   RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-mobix}
@@ -29,10 +32,13 @@ services:
       context: .
       args: {SERVICE: gateway}
     environment:
+      <<: [*mongo-env, *identity-env]
+      MONGO_DB: ${ACCOUNTS_MONGO_DB:-mobix_accounts}
+      MOBIX_BOOTSTRAP_EMAIL: ${MOBIX_BOOTSTRAP_EMAIL:-}
+      MOBIX_BOOTSTRAP_PASSWORD: ${MOBIX_BOOTSTRAP_PASSWORD:-}
       TRIP_URL: http://trip:8082
       DRIVER_URL: http://driver:8083
       PAYMENT_URL: http://payment:8084
-      MOBIX_API_KEY: ${MOBIX_API_KEY:-}
     ports:
       - "127.0.0.1:${GATEWAY_PORT:-8080}:8080"
     depends_on:
@@ -50,7 +56,7 @@ services:
       context: .
       args: {SERVICE: trip}
     environment:
-      <<: [*mongo-env, *rabbit-env]
+      <<: [*mongo-env, *rabbit-env, *identity-env]
       MONGO_DB: ${MONGO_DB:-mobix}
       DRIVER_URL: http://driver:8083
     depends_on:
@@ -67,7 +73,7 @@ services:
       context: .
       args: {SERVICE: driver}
     environment:
-      <<: *mongo-env
+      <<: [*mongo-env, *identity-env]
       MONGO_DB: ${MONGO_DB:-mobix}
     depends_on:
       mongodb: {condition: service_healthy}
@@ -82,8 +88,9 @@ services:
       context: .
       args: {SERVICE: payment}
     environment:
-      <<: [*mongo-env, *rabbit-env]
+      <<: [*mongo-env, *rabbit-env, *identity-env]
       MONGO_DB: ${PAYMENT_MONGO_DB:-mobix_payment}
+      TRIP_URL: http://trip:8082
     depends_on:
       mongodb: {condition: service_healthy}
       rabbitmq: {condition: service_healthy}

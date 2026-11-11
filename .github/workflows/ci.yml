@@ -35,7 +35,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      MOBIX_API_KEY: mobix-ci-key
+      MOBIX_INTERNAL_KEY: mobix-ci-internal-signing-key-for-isolated-tests
+      MOBIX_BOOTSTRAP_EMAIL: operator@mobix.test
+      MOBIX_BOOTSTRAP_PASSWORD: mobix-ci-operator-password
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-kubectl@v4

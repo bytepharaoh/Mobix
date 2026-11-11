@@ -14,7 +14,6 @@ import (
 	reflect "reflect"
 
 	domain "github.com/bytepharaoh/Mobix/internal/trip/domain"
-	messaging "github.com/bytepharaoh/Mobix/pkg/messaging"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -73,16 +72,16 @@ func (mr *MockRepositoryMockRecorder) FindByID(ctx, id any) *gomock.Call {
 }
 
 // Transition mocks base method.
-func (m *MockRepository) Transition(ctx context.Context, id string, from, to domain.TripStatus, driverID string, payment *messaging.TripCompleted) (*domain.Trip, error) {
+func (m *MockRepository) Transition(ctx context.Context, id string, expected *domain.Trip, change domain.Transition) (*domain.Trip, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Transition", ctx, id, from, to, driverID, payment)
+	ret := m.ctrl.Call(m, "Transition", ctx, id, expected, change)
 	ret0, _ := ret[0].(*domain.Trip)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Transition indicates an expected call of Transition.
-func (mr *MockRepositoryMockRecorder) Transition(ctx, id, from, to, driverID, payment any) *gomock.Call {
+func (mr *MockRepositoryMockRecorder) Transition(ctx, id, expected, change any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Transition", reflect.TypeOf((*MockRepository)(nil).Transition), ctx, id, from, to, driverID, payment)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Transition", reflect.TypeOf((*MockRepository)(nil).Transition), ctx, id, expected, change)
 }

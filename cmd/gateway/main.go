@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/bytepharaoh/Mobix/internal/accounts"
 	"github.com/bytepharaoh/Mobix/internal/gateway/handler"
+	"github.com/bytepharaoh/Mobix/pkg/authn"
 	"github.com/bytepharaoh/Mobix/pkg/config"
 	"github.com/bytepharaoh/Mobix/pkg/httpapi"
+	"github.com/bytepharaoh/Mobix/pkg/mongox"
 )
 
 func main() { httpapi.Main(run) }
@@ -24,5 +27,26 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("PAYMENT_URL: %w", err)
 	}
-	return httpapi.Run(ctx, config.GetString("GATEWAY_PORT", "8080"), handler.New(trip, driver, payment, config.GetString("MOBIX_API_KEY", "")))
+	delegation, err := authn.LoadDelegation()
+	if err != nil {
+		return err
+	}
+	database, err := mongox.Open(ctx)
+	if err != nil {
+		return err
+	}
+	defer mongox.Close(database.Client())
+	store := accounts.NewStore(database)
+	if err := store.EnsureIndexes(ctx); err != nil {
+		return fmt.Errorf("prepare account indexes: %w", err)
+	}
+	auth, err := accounts.NewService(store)
+	if err != nil {
+		return err
+	}
+	if err := auth.Bootstrap(ctx, config.GetString("MOBIX_BOOTSTRAP_EMAIL", ""), config.GetString("MOBIX_BOOTSTRAP_PASSWORD", "")); err != nil {
+		return err
+	}
+	ready := func(ctx context.Context) error { return database.Client().Ping(ctx, nil) }
+	return httpapi.Run(ctx, config.GetString("GATEWAY_PORT", "8080"), handler.New(trip, driver, payment, auth, delegation, ready))
 }

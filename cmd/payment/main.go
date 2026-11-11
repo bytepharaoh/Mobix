@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/bytepharaoh/Mobix/internal/payment/handler"
 	"github.com/bytepharaoh/Mobix/internal/payment/repository"
+	"github.com/bytepharaoh/Mobix/pkg/authn"
 	"github.com/bytepharaoh/Mobix/pkg/config"
 	"github.com/bytepharaoh/Mobix/pkg/httpapi"
 	"github.com/bytepharaoh/Mobix/pkg/messaging"
@@ -14,6 +16,14 @@ import (
 func main() { httpapi.Main(run) }
 
 func run(ctx context.Context) error {
+	delegation, err := authn.LoadDelegation()
+	if err != nil {
+		return err
+	}
+	tripURL, err := httpapi.Upstream(config.GetString("TRIP_URL", "http://localhost:8082"))
+	if err != nil {
+		return fmt.Errorf("TRIP_URL: %w", err)
+	}
 	database, err := mongox.Open(ctx)
 	if err != nil {
 		return err
@@ -31,6 +41,6 @@ func run(ctx context.Context) error {
 		<-done
 	}()
 	mux := httpapi.Mux("payment", func(ctx context.Context) error { return database.Client().Ping(ctx, nil) })
-	handler.Register(mux, repo)
-	return httpapi.Run(ctx, config.GetString("PAYMENT_HTTP_PORT", "8084"), mux)
+	handler.Register(mux, repo, tripURL, delegation)
+	return httpapi.Run(ctx, config.GetString("PAYMENT_HTTP_PORT", "8084"), delegation.Protect("payment", mux))
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/bytepharaoh/Mobix/internal/trip/handler"
 	"github.com/bytepharaoh/Mobix/internal/trip/repository"
 	"github.com/bytepharaoh/Mobix/internal/trip/service"
+	"github.com/bytepharaoh/Mobix/pkg/authn"
 	"github.com/bytepharaoh/Mobix/pkg/config"
 	"github.com/bytepharaoh/Mobix/pkg/httpapi"
 	"github.com/bytepharaoh/Mobix/pkg/messaging"
@@ -16,6 +17,10 @@ import (
 func main() { httpapi.Main(run) }
 
 func run(ctx context.Context) error {
+	delegation, err := authn.LoadDelegation()
+	if err != nil {
+		return err
+	}
 	driverURL, err := httpapi.Upstream(config.GetString("DRIVER_URL", "http://localhost:8083"))
 	if err != nil {
 		return fmt.Errorf("DRIVER_URL: %w", err)
@@ -40,6 +45,6 @@ func run(ctx context.Context) error {
 		<-done
 	}()
 	mux := httpapi.Mux("trip", func(ctx context.Context) error { return database.Client().Ping(ctx, nil) })
-	handler.Register(mux, service.New(repo), repo, driverURL)
-	return httpapi.Run(ctx, config.GetString("TRIP_HTTP_PORT", "8082"), mux)
+	handler.Register(mux, service.New(repo), repo, driverURL, delegation)
+	return httpapi.Run(ctx, config.GetString("TRIP_HTTP_PORT", "8082"), delegation.Protect("trip", mux))
 }

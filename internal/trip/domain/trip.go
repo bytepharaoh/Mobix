@@ -29,18 +29,20 @@ type Location = geo.Location
 // Trip is the core domain object for the trip service.
 // One Trip = one document in MongoDB = one ride from request to completion.
 type Trip struct {
-	IdempotencyKey string                   `bson:"idempotency_key,omitempty" json:"-"`
-	PendingPayment *messaging.TripCompleted `bson:"pending_payment,omitempty" json:"-"`
-	FareCents      int64                    `bson:"fare_cents,omitempty" json:"fare_cents"`
-	Currency       string                   `bson:"currency,omitempty" json:"currency"`
-	ID             bson.ObjectID            `bson:"_id,omitempty" json:"id"`
-	RiderID        string                   `bson:"rider_id"      json:"rider_id"`
-	DriverID       string                   `bson:"driver_id"     json:"driver_id,omitempty"`
-	Pickup         Location                 `bson:"pickup"        json:"pickup"`
-	Dropoff        Location                 `bson:"dropoff"       json:"dropoff"`
-	Status         TripStatus               `bson:"status"        json:"status"`
-	CreatedAt      time.Time                `bson:"created_at"    json:"created_at"`
-	UpdatedAt      time.Time                `bson:"updated_at"    json:"updated_at"`
+	RiderAccountID       string                   `bson:"rider_account_id,omitempty" json:"-"`
+	DriverAccountID      string                   `bson:"driver_account_id,omitempty" json:"-"`
+	ScopedIdempotencyKey string                   `bson:"scoped_idempotency_key,omitempty" json:"-"`
+	PendingPayment       *messaging.TripCompleted `bson:"pending_payment,omitempty" json:"-"`
+	FareCents            int64                    `bson:"fare_cents,omitempty" json:"fare_cents"`
+	Currency             string                   `bson:"currency,omitempty" json:"currency"`
+	ID                   bson.ObjectID            `bson:"_id,omitempty" json:"id"`
+	RiderID              string                   `bson:"rider_id"      json:"rider_id"`
+	DriverID             string                   `bson:"driver_id"     json:"driver_id,omitempty"`
+	Pickup               Location                 `bson:"pickup"        json:"pickup"`
+	Dropoff              Location                 `bson:"dropoff"       json:"dropoff"`
+	Status               TripStatus               `bson:"status"        json:"status"`
+	CreatedAt            time.Time                `bson:"created_at"    json:"created_at"`
+	UpdatedAt            time.Time                `bson:"updated_at"    json:"updated_at"`
 }
 
 // CreateTripRequest is what the HTTP handler receives from the client.
@@ -68,4 +70,11 @@ func (r *CreateTripRequest) Validate() error {
 type DriverActivity struct {
 	ActiveTripID   *bson.ObjectID `bson:"active_trip_id" json:"active_trip_id,omitempty"`
 	CompletedTrips int64          `bson:"completed_trips" json:"completed_trips"`
+}
+
+type Transition struct {
+	Status          TripStatus
+	DriverID        string
+	DriverAccountID string
+	Payment         *messaging.TripCompleted
 }

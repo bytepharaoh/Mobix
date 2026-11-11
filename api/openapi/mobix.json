@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Mobix API",
-    "version": "1.0.0",
-    "description": "Ride-sharing backend for driver registration, trip dispatch and simulated payments. The Compose gateway is loopback-only. A bearer token is required when MOBIX_API_KEY is configured."
+    "version": "2.0.0",
+    "description": "Operator-provisioned rider, driver and operator accounts with expiring bearer sessions. Riders own their trips, operators dispatch them, and assigned drivers start and complete them."
   },
   "servers": [
     {
@@ -11,6 +11,9 @@
     }
   ],
   "tags": [
+    {
+      "name": "Accounts"
+    },
     {
       "name": "Drivers"
     },
@@ -26,11 +29,281 @@
   ],
   "security": [
     {
-      "gatewayToken": []
-    },
-    {}
+      "accountSession": []
+    }
   ],
   "paths": {
+    "/v1/auth/login": {
+      "post": {
+        "tags": [
+          "Accounts"
+        ],
+        "operationId": "signIn",
+        "summary": "Sign in",
+        "description": "Exchange individual account credentials for a 12-hour bearer session.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid fields or JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid credentials or session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Authentication hashing capacity is busy. Retry shortly.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request body exceeds 64 KiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Credentials"
+              },
+              "example": {
+                "email": "operator@mobix.test",
+                "password": "your-operator-password"
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/v1/auth/me": {
+      "get": {
+        "tags": [
+          "Accounts"
+        ],
+        "operationId": "getMyAccount",
+        "summary": "Read my account",
+        "description": "Read the current signed-in account identity and role.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid credentials or session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/logout": {
+      "post": {
+        "tags": [
+          "Accounts"
+        ],
+        "operationId": "signOut",
+        "summary": "Sign out",
+        "description": "Revoke the current session immediately.",
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Invalid credentials or session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/accounts": {
+      "post": {
+        "tags": [
+          "Accounts"
+        ],
+        "operationId": "createAccount",
+        "summary": "Provision an account",
+        "description": "Operator only. Create an individual rider, driver or operator account.",
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid fields or JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid credentials or session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The role cannot provision accounts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Authentication hashing capacity is busy. Retry shortly.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Email already belongs to an account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request body exceeds 64 KiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAccount"
+              },
+              "example": {
+                "email": "rider@example.test",
+                "password": "choose-a-unique-password",
+                "role": "rider"
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "tags": [
@@ -94,7 +367,7 @@
         ],
         "operationId": "registerDriver",
         "summary": "Register a driver",
-        "description": "Create an offline driver. Email, phone and license plate must be unique.",
+        "description": "Driver only. Register one profile linked to your authenticated account. Contact email, phone and license plate must be unique.",
         "responses": {
           "201": {
             "description": "Resource created or previous trip returned",
@@ -135,7 +408,7 @@
             }
           },
           "401": {
-            "description": "A valid bearer token is required when a gateway API key is configured",
+            "description": "A valid, unexpired account session is required",
             "content": {
               "application/json": {
                 "schema": {
@@ -156,6 +429,16 @@
           },
           "413": {
             "description": "Request body exceeds 64 KiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The account role is not allowed to perform this action",
             "content": {
               "application/json": {
                 "schema": {
@@ -195,7 +478,7 @@
         ],
         "operationId": "getDriver",
         "summary": "Read a driver",
-        "description": "Read a registered driver, including their declared availability and most recent location.",
+        "description": "Read your own driver profile, or read any profile as an operator.",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -228,7 +511,7 @@
             }
           },
           "401": {
-            "description": "A valid bearer token is required when a gateway API key is configured",
+            "description": "A valid, unexpired account session is required",
             "content": {
               "application/json": {
                 "schema": {
@@ -239,6 +522,16 @@
           },
           "503": {
             "description": "A required service is temporarily unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The account role is not allowed to perform this action",
             "content": {
               "application/json": {
                 "schema": {
@@ -269,7 +562,7 @@
         ],
         "operationId": "setAvailability",
         "summary": "Set driver availability",
-        "description": "Opt in or out of future assignments. The active trip remains owned by the trip service.",
+        "description": "Driver only. Update your own declared availability. An active trip remains owned by the trip service.",
         "responses": {
           "204": {
             "description": "Update applied"
@@ -295,7 +588,7 @@
             }
           },
           "401": {
-            "description": "A valid bearer token is required when a gateway API key is configured",
+            "description": "A valid, unexpired account session is required",
             "content": {
               "application/json": {
                 "schema": {
@@ -316,6 +609,16 @@
           },
           "413": {
             "description": "Request body exceeds 64 KiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The account role is not allowed to perform this action",
             "content": {
               "application/json": {
                 "schema": {
@@ -359,7 +662,7 @@
         ],
         "operationId": "updateLocation",
         "summary": "Update driver location",
-        "description": "Store the latest reported GPS coordinates.",
+        "description": "Driver only. Update your own most recent GPS location.",
         "responses": {
           "204": {
             "description": "Update applied"
@@ -385,7 +688,7 @@
             }
           },
           "401": {
-            "description": "A valid bearer token is required when a gateway API key is configured",
+            "description": "A valid, unexpired account session is required",
             "content": {
               "application/json": {
                 "schema": {
@@ -406,6 +709,16 @@
           },
           "413": {
             "description": "Request body exceeds 64 KiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The account role is not allowed to perform this action",
             "content": {
               "application/json": {
                 "schema": {
@@ -450,7 +763,7 @@
         ],
         "operationId": "getDriverActivity",
         "summary": "Read driver activity",
-        "description": "Read effective status, any active trip and the number of completed trips.",
+        "description": "Read your own effective driver status and completed trip count, or read any driver activity as an operator.",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -483,7 +796,7 @@
             }
           },
           "401": {
-            "description": "A valid bearer token is required when a gateway API key is configured",
+            "description": "A valid, unexpired account session is required",
             "content": {
               "application/json": {
                 "schema": {
@@ -494,6 +807,16 @@
           },
           "503": {
             "description": "A required service is temporarily unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The account role is not allowed to perform this action",
             "content": {
               "application/json": {
                 "schema": {
@@ -524,7 +847,7 @@
         ],
         "operationId": "requestTrip",
         "summary": "Request a ride",
-        "description": "Save a pickup and drop-off and receive an estimated fare in USD cents.",
+        "description": "Rider only. The authenticated account supplies rider_id. Idempotency-Key is scoped to this rider. The response includes an estimated fare in USD cents.",
         "responses": {
           "201": {
             "description": "Resource created or previous trip returned",
@@ -555,7 +878,7 @@
             }
           },
           "409": {
-            "description": "The key was already used with different trip details",
+            "description": "This rider already used the retry key with different trip details",
             "content": {
               "application/json": {
                 "schema": {
@@ -565,7 +888,7 @@
             }
           },
           "401": {
-            "description": "A valid bearer token is required when a gateway API key is configured",
+            "description": "A valid, unexpired account session is required",
             "content": {
               "application/json": {
                 "schema": {
@@ -593,6 +916,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "The account role is not allowed to perform this action",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -603,7 +936,6 @@
                 "$ref": "#/components/schemas/TripInput"
               },
               "example": {
-                "rider_id": "rider-demo",
                 "pickup": {
                   "lat": 40.73061,
                   "lng": -73.935242
@@ -620,7 +952,7 @@
           {
             "name": "Idempotency-Key",
             "in": "header",
-            "description": "Optional retry key. Use the same key and body after a timeout.",
+            "description": "Optional retry key scoped to the authenticated rider. Reuse the same key and trip details after a timeout.",
             "schema": {
               "type": "string",
               "maxLength": 128
@@ -636,7 +968,7 @@
         ],
         "operationId": "getTrip",
         "summary": "Read a trip",
-        "description": "Check current trip status and fare.",
+        "description": "Read a trip as its rider, its assigned driver, or an operator. Inaccessible trips return 404.",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -669,7 +1001,7 @@
             }
           },
           "401": {
-            "description": "A valid bearer token is required when a gateway API key is configured",
+            "description": "A valid, unexpired account session is required",
             "content": {
               "application/json": {
                 "schema": {
@@ -680,6 +1012,16 @@
           },
           "503": {
             "description": "A required service is temporarily unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The account role is not allowed to perform this action",
             "content": {
               "application/json": {
                 "schema": {
@@ -710,7 +1052,7 @@
         ],
         "operationId": "transitionTrip",
         "summary": "Transition a trip",
-        "description": "Assign an available driver with driver_id, start an assigned trip, or complete an in-progress trip. Cancel from requested or assigned. Completion queues a simulated payment.",
+        "description": "Operators assign drivers. The assigned driver alone starts or completes a trip. Riders and operators may cancel requested or assigned trips. Current-state retries enforce the same permissions.",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -763,7 +1105,7 @@
             }
           },
           "401": {
-            "description": "A valid bearer token is required when a gateway API key is configured",
+            "description": "A valid, unexpired account session is required",
             "content": {
               "application/json": {
                 "schema": {
@@ -784,6 +1126,16 @@
           },
           "413": {
             "description": "Request body exceeds 64 KiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The account role is not allowed to perform this action",
             "content": {
               "application/json": {
                 "schema": {
@@ -828,7 +1180,7 @@
         ],
         "operationId": "getPayment",
         "summary": "Read a payment receipt",
-        "description": "Read the simulated receipt for a completed trip. Processing is asynchronous, so retry briefly on PAYMENT_NOT_FOUND.",
+        "description": "Read the simulated receipt as the trip owner or an operator. Receipts are asynchronous. Inaccessible trips return 404.",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -851,7 +1203,7 @@
             }
           },
           "404": {
-            "description": "Resource was not found",
+            "description": "Trip is inaccessible or its receipt is still pending",
             "content": {
               "application/json": {
                 "schema": {
@@ -861,7 +1213,7 @@
             }
           },
           "401": {
-            "description": "A valid bearer token is required when a gateway API key is configured",
+            "description": "A valid, unexpired account session is required",
             "content": {
               "application/json": {
                 "schema": {
@@ -872,6 +1224,16 @@
           },
           "503": {
             "description": "A required service is temporarily unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The account role is not allowed to perform this action",
             "content": {
               "application/json": {
                 "schema": {
@@ -893,6 +1255,68 @@
             "description": "24-character MongoDB ObjectID"
           }
         ]
+      }
+    },
+    "/v1/drivers/me": {
+      "get": {
+        "tags": [
+          "Drivers"
+        ],
+        "operationId": "getMyDriverProfile",
+        "summary": "Read my driver profile",
+        "description": "Driver only. Retrieve the profile linked to your signed-in account.",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Driver"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource was not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A valid, unexpired account session is required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is temporarily unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The account role is not allowed to perform this action",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
       }
     }
   },
@@ -1034,22 +1458,18 @@
       "TripInput": {
         "type": "object",
         "required": [
-          "rider_id",
           "pickup",
           "dropoff"
         ],
         "properties": {
-          "rider_id": {
-            "type": "string",
-            "maxLength": 128
-          },
           "pickup": {
             "$ref": "#/components/schemas/Location"
           },
           "dropoff": {
             "$ref": "#/components/schemas/Location"
           }
-        }
+        },
+        "additionalProperties": false
       },
       "Trip": {
         "type": "object",
@@ -1247,12 +1667,119 @@
             "minimum": 0
           }
         }
+      },
+      "Account": {
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "role"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 254
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "rider",
+              "driver",
+              "operator"
+            ]
+          }
+        }
+      },
+      "Credentials": {
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 254
+          },
+          "password": {
+            "type": "string",
+            "format": "password",
+            "minLength": 12,
+            "maxLength": 72,
+            "description": "12 to 72 UTF-8 bytes."
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateAccount": {
+        "type": "object",
+        "required": [
+          "email",
+          "password",
+          "role"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 254
+          },
+          "password": {
+            "type": "string",
+            "format": "password",
+            "minLength": 12,
+            "maxLength": 72,
+            "description": "12 to 72 UTF-8 bytes."
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "rider",
+              "driver",
+              "operator"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "Session": {
+        "type": "object",
+        "required": [
+          "access_token",
+          "token_type",
+          "expires_at",
+          "account"
+        ],
+        "properties": {
+          "access_token": {
+            "type": "string"
+          },
+          "token_type": {
+            "type": "string",
+            "enum": [
+              "Bearer"
+            ]
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "account": {
+            "$ref": "#/components/schemas/Account"
+          }
+        }
       }
     },
     "securitySchemes": {
-      "gatewayToken": {
+      "accountSession": {
         "type": "http",
-        "scheme": "bearer"
+        "scheme": "bearer",
+        "description": "Opaque access token returned by POST /v1/auth/login. Sessions expire after 12 hours and can be revoked with POST /v1/auth/logout."
       }
     }
   }

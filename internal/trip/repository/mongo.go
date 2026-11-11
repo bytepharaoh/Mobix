@@ -37,8 +37,9 @@ func (r *MongoRepository) EnsureIndexes(ctx context.Context) error {
 			Options: options.Index().SetName("driver_trip_history"),
 		},
 		{
-			Keys:    bson.D{{Key: "idempotency_key", Value: 1}},
-			Options: options.Index().SetName("unique_create_key").SetUnique(true).SetSparse(true),
+			Keys: bson.D{{Key: "rider_account_id", Value: 1}, {Key: "scoped_idempotency_key", Value: 1}},
+			Options: options.Index().SetName("unique_rider_create_key").SetUnique(true).
+				SetPartialFilterExpression(bson.M{"scoped_idempotency_key": bson.M{"$type": "string"}}),
 		},
 		{
 			Keys:    bson.D{{Key: "pending_payment.occurred_at", Value: 1}},
@@ -56,14 +57,14 @@ func (r *MongoRepository) Create(ctx context.Context, trip *domain.Trip) (*domai
 	if err == nil {
 		return trip, nil
 	}
-	if !mongo.IsDuplicateKeyError(err) || trip.IdempotencyKey == "" {
+	if !mongo.IsDuplicateKeyError(err) || trip.ScopedIdempotencyKey == "" {
 		return nil, fmt.Errorf("insert trip: %w", err)
 	}
 	var existing domain.Trip
-	if err := r.collection.FindOne(ctx, bson.M{"idempotency_key": trip.IdempotencyKey}).Decode(&existing); err != nil {
+	if err := r.collection.FindOne(ctx, bson.M{"rider_account_id": trip.RiderAccountID, "scoped_idempotency_key": trip.ScopedIdempotencyKey}).Decode(&existing); err != nil {
 		return nil, fmt.Errorf("load previous trip request: %w", err)
 	}
-	if existing.RiderID != trip.RiderID || existing.Pickup != trip.Pickup || existing.Dropoff != trip.Dropoff {
+	if existing.Pickup != trip.Pickup || existing.Dropoff != trip.Dropoff {
 		return nil, apperrors.New(409, "IDEMPOTENCY_CONFLICT", "The idempotency key was used with different trip details")
 	}
 	return &existing, nil
@@ -84,23 +85,28 @@ func (r *MongoRepository) FindByID(ctx context.Context, id string) (*domain.Trip
 	return &trip, nil
 }
 
-func (r *MongoRepository) Transition(ctx context.Context, id string, from, to domain.TripStatus, driverID string, payment *messaging.TripCompleted) (*domain.Trip, error) {
+func (r *MongoRepository) Transition(ctx context.Context, id string, expected *domain.Trip, change domain.Transition) (*domain.Trip, error) {
 	objectID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return nil, apperrors.ErrInvalidInput
 	}
-	fields := bson.M{"status": to, "updated_at": time.Now().UTC()}
-	if driverID != "" {
-		fields["driver_id"] = driverID
+	fields := bson.M{"status": change.Status, "updated_at": time.Now().UTC()}
+	if change.DriverID != "" {
+		fields["driver_id"] = change.DriverID
+		fields["driver_account_id"] = change.DriverAccountID
 	}
-	if payment != nil {
+	if payment := change.Payment; payment != nil {
 		fields["pending_payment"] = payment
 		fields["fare_cents"] = payment.AmountCents
 		fields["currency"] = payment.Currency
 	}
 	var updated domain.Trip
 	err = r.collection.FindOneAndUpdate(ctx,
-		bson.M{"_id": objectID, "status": from},
+		bson.M{
+			"_id": objectID, "status": expected.Status,
+			"rider_account_id":  storedAccount(expected.RiderAccountID),
+			"driver_account_id": storedAccount(expected.DriverAccountID),
+		},
 		bson.M{"$set": fields},
 		options.FindOneAndUpdate().SetReturnDocument(options.After),
 	).Decode(&updated)
@@ -117,6 +123,13 @@ func (r *MongoRepository) Transition(ctx context.Context, id string, from, to do
 	default:
 		return &updated, nil
 	}
+}
+
+func storedAccount(id string) any {
+	if id == "" {
+		return nil // BSON null also matches fields missing on v1 documents.
+	}
+	return id
 }
 
 func (r *MongoRepository) NextPayment(ctx context.Context) (*messaging.TripCompleted, error) {

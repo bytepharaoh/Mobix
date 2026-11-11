@@ -28,6 +28,11 @@ spec:
           image: mobix/driver:local
           imagePullPolicy: IfNotPresent
           env:
+            - name: MOBIX_INTERNAL_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mobix-dependencies
+                  key: internal-signing-key
             - name: MONGO_DB
               value: "mobix"
             - name: MONGO_URI

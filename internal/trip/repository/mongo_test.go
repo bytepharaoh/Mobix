@@ -251,7 +251,7 @@ func TestUpdateStatus(t *testing.T) {
 			defer cleanup()
 
 			id := tt.setup(repo)
-			_, err := repo.Transition(context.Background(), id, domain.StatusRequested, tt.newStatus, bson.NewObjectID().Hex(), nil)
+			_, err := repo.Transition(context.Background(), id, &domain.Trip{Status: domain.StatusRequested}, domain.Transition{Status: tt.newStatus, DriverID: bson.NewObjectID().Hex()})
 
 			if tt.wantErr {
 				if err == nil {
@@ -281,5 +281,75 @@ func TestUpdateStatus(t *testing.T) {
 				t.Error("expected UpdatedAt to be recent")
 			}
 		})
+	}
+}
+
+func TestRiderScopedKeysAndOwnershipCAS(t *testing.T) {
+	repoInterface, cleanup := setupTestDB(t)
+	defer cleanup()
+	repo := repoInterface.(*MongoRepository)
+	ctx := context.Background()
+	if err := repo.EnsureIndexes(ctx); err != nil {
+		t.Fatal(err)
+	}
+	newTrip := func(owner, key string) *domain.Trip {
+		return &domain.Trip{
+			RiderID: owner, RiderAccountID: owner, ScopedIdempotencyKey: key,
+			Status: domain.StatusRequested,
+			Pickup: domain.Location{Lat: 30, Lng: 31}, Dropoff: domain.Location{Lat: 30.1, Lng: 31.1},
+		}
+	}
+	first, err := repo.Create(ctx, newTrip("rider-a", "same-key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	retry, err := repo.Create(ctx, newTrip("rider-a", "same-key"))
+	if err != nil || retry.ID != first.ID {
+		t.Fatalf("expected rider retry to reuse trip, got %+v, %v", retry, err)
+	}
+	other, err := repo.Create(ctx, newTrip("rider-b", "same-key"))
+	if err != nil || other.ID == first.ID {
+		t.Fatalf("expected independent rider key, got %+v, %v", other, err)
+	}
+	for range 2 {
+		if _, err := repo.Create(ctx, newTrip("rider-a", "")); err != nil {
+			t.Fatalf("multiple requests without keys must succeed: %v", err)
+		}
+	}
+	changed := newTrip("rider-a", "same-key")
+	changed.Dropoff.Lat++
+	if _, err := repo.Create(ctx, changed); err == nil {
+		t.Fatal("same rider/key with different coordinates must conflict")
+	}
+
+	// A stale authorization decision must not mutate the new owner's record.
+	_, err = repo.collection.UpdateOne(ctx, bson.M{"_id": first.ID},
+		bson.M{"$set": bson.M{"rider_account_id": "new-owner"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.Transition(ctx, first.ID.Hex(), first, domain.Transition{Status: domain.StatusCancelled}); err == nil {
+		t.Fatal("expected stale owner compare-and-set to fail")
+	}
+	persisted, err := repo.FindByID(ctx, first.ID.Hex())
+	if err != nil || persisted.Status != domain.StatusRequested {
+		t.Fatalf("unauthorized write changed state: %+v, %v", persisted, err)
+	}
+
+	// The driver binding is checked in the same update as the trip status.
+	assigned, err := repo.Transition(ctx, other.ID.Hex(), other, domain.Transition{
+		Status: domain.StatusAssigned, DriverID: bson.NewObjectID().Hex(), DriverAccountID: "driver-a",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale := *assigned
+	_, err = repo.collection.UpdateOne(ctx, bson.M{"_id": assigned.ID},
+		bson.M{"$set": bson.M{"driver_account_id": "driver-b"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.Transition(ctx, assigned.ID.Hex(), &stale, domain.Transition{Status: domain.StatusInProgress}); err == nil {
+		t.Fatal("expected stale driver authorization to fail")
 	}
 }

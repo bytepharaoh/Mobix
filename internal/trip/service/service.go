@@ -11,6 +11,7 @@ import (
 
 	"github.com/bytepharaoh/Mobix/internal/trip/domain"
 	"github.com/bytepharaoh/Mobix/internal/trip/repository"
+	"github.com/bytepharaoh/Mobix/pkg/authn"
 	apperrors "github.com/bytepharaoh/Mobix/pkg/errors"
 	"github.com/bytepharaoh/Mobix/pkg/geo"
 	"github.com/bytepharaoh/Mobix/pkg/messaging"
@@ -26,7 +27,11 @@ func New(repo repository.Repository) *TripService {
 }
 
 func (s *TripService) CreateTrip(ctx context.Context, req domain.CreateTripRequest, key string) (*domain.Trip, error) {
-	req.RiderID = strings.TrimSpace(req.RiderID)
+	actor := authn.From(ctx)
+	if actor.Role != authn.Rider || actor.ID == "" {
+		return nil, apperrors.ErrForbidden
+	}
+	req.RiderID = strings.TrimSpace(actor.ID)
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
@@ -34,16 +39,17 @@ func (s *TripService) CreateTrip(ctx context.Context, req domain.CreateTripReque
 		return nil, apperrors.ErrInvalidInput
 	}
 	trip := &domain.Trip{
-		RiderID:   req.RiderID,
-		Pickup:    req.Pickup,
-		Dropoff:   req.Dropoff,
-		Status:    domain.StatusRequested,
-		FareCents: fare(req.Pickup, req.Dropoff),
-		Currency:  "USD",
+		RiderID:        req.RiderID,
+		RiderAccountID: actor.ID,
+		Pickup:         req.Pickup,
+		Dropoff:        req.Dropoff,
+		Status:         domain.StatusRequested,
+		FareCents:      fare(req.Pickup, req.Dropoff),
+		Currency:       "USD",
 	}
 	if key != "" {
 		digest := sha256.Sum256([]byte(key))
-		trip.IdempotencyKey = hex.EncodeToString(digest[:])
+		trip.ScopedIdempotencyKey = hex.EncodeToString(digest[:])
 	}
 	return s.repo.Create(ctx, trip)
 }
@@ -53,13 +59,22 @@ func (s *TripService) GetTrip(ctx context.Context, id string) (*domain.Trip, err
 		return nil, apperrors.ErrInvalidInput
 	}
 	trip, err := s.repo.FindByID(ctx, id)
-	return withFare(trip), err
+	if err != nil {
+		return nil, err
+	}
+	if !canRead(authn.From(ctx), trip) {
+		return nil, domain.ErrTripNotFound
+	}
+	return withFare(trip), nil
 }
 
-func (s *TripService) UpdateTripStatus(ctx context.Context, id string, status domain.TripStatus, driverID string, checkDriver func(context.Context, string) error) (*domain.Trip, error) {
+func (s *TripService) UpdateTripStatus(ctx context.Context, id string, status domain.TripStatus, driverID string, checkDriver func(context.Context, string) (string, error)) (*domain.Trip, error) {
 	trip, err := s.GetTrip(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if !canTransition(authn.From(ctx), trip, status) {
+		return nil, apperrors.ErrForbidden
 	}
 	if status == domain.StatusAssigned {
 		parsed, err := bson.ObjectIDFromHex(driverID)
@@ -76,9 +91,14 @@ func (s *TripService) UpdateTripStatus(ctx context.Context, id string, status do
 	if err := validateStatusTransition(trip.Status, status); err != nil {
 		return nil, err
 	}
+	driverAccountID := ""
 	if status == domain.StatusAssigned {
-		if err := checkDriver(ctx, driverID); err != nil {
+		driverAccountID, err = checkDriver(ctx, driverID)
+		if err != nil {
 			return nil, err
+		}
+		if driverAccountID == "" {
+			return nil, apperrors.New(409, "DRIVER_NOT_ENROLLED", "The driver needs an individual account before assignment")
 		}
 	}
 	var payment *messaging.TripCompleted
@@ -92,10 +112,18 @@ func (s *TripService) UpdateTripStatus(ctx context.Context, id string, status do
 			AmountCents: amount, Currency: "USD", OccurredAt: time.Now().UTC(),
 		}
 	}
-	updated, err := s.repo.Transition(ctx, id, trip.Status, status, driverID, payment)
+	updated, err := s.repo.Transition(ctx, id, trip, domain.Transition{
+		Status: status, DriverID: driverID, DriverAccountID: driverAccountID, Payment: payment,
+	})
 	if errors.Is(err, apperrors.ErrConflict) {
-		current, readErr := s.repo.FindByID(ctx, id)
-		if readErr == nil && sameTransition(current, status, driverID) {
+		current, readErr := s.GetTrip(ctx, id)
+		if readErr != nil {
+			return nil, readErr
+		}
+		if !canTransition(authn.From(ctx), current, status) {
+			return nil, apperrors.ErrForbidden
+		}
+		if sameTransition(current, status, driverID) {
 			return withFare(current), nil
 		}
 	}
@@ -132,4 +160,33 @@ func withFare(trip *domain.Trip) *domain.Trip {
 
 func fare(pickup, dropoff domain.Location) int64 {
 	return 350 + int64(math.Round(120*geo.Kilometers(pickup, dropoff)))
+}
+
+func canRead(actor authn.Actor, trip *domain.Trip) bool {
+	switch actor.Role {
+	case authn.Operator:
+		return actor.ID != ""
+	case authn.Rider:
+		return actor.ID != "" && trip.RiderAccountID == actor.ID
+	case authn.Driver:
+		return actor.ID != "" && trip.DriverAccountID == actor.ID
+	default:
+		return false
+	}
+}
+
+func canTransition(actor authn.Actor, trip *domain.Trip, status domain.TripStatus) bool {
+	if actor.ID == "" {
+		return false
+	}
+	switch actor.Role {
+	case authn.Operator:
+		return status == domain.StatusAssigned || status == domain.StatusCancelled
+	case authn.Rider:
+		return actor.ID == trip.RiderAccountID && status == domain.StatusCancelled
+	case authn.Driver:
+		return actor.ID == trip.DriverAccountID && (status == domain.StatusInProgress || status == domain.StatusCompleted)
+	default:
+		return false
+	}
 }

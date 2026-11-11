@@ -25,6 +25,7 @@ type Location = geo.Location
 
 // Struct for a driver entity
 type Driver struct {
+	AccountID   string        `bson:"account_id,omitempty" json:"-"`
 	ID          bson.ObjectID `bson:"_id,omitempty" json:"id"`
 	Name        string        `bson:"name" json:"name"`
 	Email       string        `bson:"email" json:"email"`
@@ -73,4 +74,10 @@ func (r *CreateDriverRequest) Validate() error {
 		return ErrInvalidCarNumber
 	}
 	return nil
+}
+
+// DispatchProfile is shared with the trip service through its authenticated lookup.
+type DispatchProfile struct {
+	AccountID string       `json:"account_id"`
+	Status    DriverStatus `json:"status"`
 }
