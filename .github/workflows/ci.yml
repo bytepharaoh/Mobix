@@ -2,46 +2,56 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main, "codex/**"]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  ci:
-    name: Format, Vet, Build, Test
+  checks:
+    name: Go checks and integration tests
     runs-on: ubuntu-latest
-
+    timeout-minutes: 15
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          go-version: '1.26.4'
-
-      - name: Install dependencies
-        run: go mod download
-
-      - name: Verify dependencies
-        run: go mod verify
-
-      - name: Tidy modules
-        run: go mod tidy
-
-      - name: Check formatting
+          go-version: "1.27.2"
+      - name: Verify dependency metadata
         run: |
-          if [ "$(gofmt -l . | wc -l)" -gt 0 ]; then
-            echo "These files need formatting — run make fmt:"
-            gofmt -l .
-            exit 1
-          fi
+          go mod verify
+          go mod tidy -diff
+      - run: make check build
+      - run: make test
 
-      - name: Run go vet
-        run: go vet ./...
-
-      - name: Build all services
-        run: go build ./...
-
-      - name: Run tests
-        run: go test -v -race ./...
+  stack:
+    name: Compose acceptance and Kubernetes manifests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MOBIX_API_KEY: mobix-ci-key
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.35.0"
+      - name: Validate deployment configuration
+        run: |
+          docker compose config --quiet
+          kubectl kustomize deployments/k8s/base >/dev/null
+          kubectl kustomize deployments/k8s/demo >/dev/null
+      - run: make up
+      - run: make demo
+      - run: make verify
+      - name: Print service logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+      - name: Remove CI containers and volumes
+        if: always()
+        run: docker compose down --volumes

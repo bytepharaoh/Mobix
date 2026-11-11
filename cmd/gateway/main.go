@@ -2,50 +2,27 @@ package main
 
 import (
 	"context"
-	"log/slog"
-	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
+	"fmt"
 
+	"github.com/bytepharaoh/Mobix/internal/gateway/handler"
 	"github.com/bytepharaoh/Mobix/pkg/config"
-	"github.com/bytepharaoh/Mobix/pkg/logger"
+	"github.com/bytepharaoh/Mobix/pkg/httpapi"
 )
 
-func main() {
+func main() { httpapi.Main(run) }
 
-	log := logger.New()
-	port := config.GetString("GATEWAY_PORT", "8080")
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write([]byte(`{"status":"ok","service":"gateway"}`)); err != nil {
-			log.Error("failed to write response", slog.String("error", err.Error()))
-		}
-	})
-	srv := &http.Server{
-		Addr:         ":" + port,
-		Handler:      mux,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  120 * time.Second,
+func run(ctx context.Context) error {
+	trip, err := httpapi.Upstream(config.GetString("TRIP_URL", "http://localhost:8082"))
+	if err != nil {
+		return fmt.Errorf("TRIP_URL: %w", err)
 	}
-	go func() {
-		log.Info("gateway service starting", slog.String("port", port))
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Error("server error", slog.String("error", err.Error()))
-			os.Exit(1)
-		}
-	}()
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-	log.Info("shutting down gracefully...")
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
-		log.Error("shutdown error", slog.String("error", err.Error()))
+	driver, err := httpapi.Upstream(config.GetString("DRIVER_URL", "http://localhost:8083"))
+	if err != nil {
+		return fmt.Errorf("DRIVER_URL: %w", err)
 	}
+	payment, err := httpapi.Upstream(config.GetString("PAYMENT_URL", "http://localhost:8084"))
+	if err != nil {
+		return fmt.Errorf("PAYMENT_URL: %w", err)
+	}
+	return httpapi.Run(ctx, config.GetString("GATEWAY_PORT", "8080"), handler.New(trip, driver, payment, config.GetString("MOBIX_API_KEY", "")))
 }

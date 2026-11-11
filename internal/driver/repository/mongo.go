@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"fmt"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -11,29 +13,31 @@ import (
 	apperrors "github.com/bytepharaoh/Mobix/pkg/errors"
 )
 
-type mongoRepository struct {
+type MongoRepository struct {
 	collection *mongo.Collection
 }
 
-func NewMongoRepository(database *mongo.Database) Repository {
-	return &mongoRepository{
+func NewMongoRepository(database *mongo.Database) *MongoRepository {
+	return &MongoRepository{
 		collection: database.Collection("driver"),
 	}
 }
 
-func (r *mongoRepository) Create(ctx context.Context, driver *domain.Driver) (*domain.Driver, error) {
+func (r *MongoRepository) Create(ctx context.Context, driver *domain.Driver) (*domain.Driver, error) {
 	now := time.Now()
 	driver.UpdatedAt = now
 	driver.CreatedAt = now
-	result, err := r.collection.InsertOne(ctx, driver)
-	if err != nil {
-		return nil, apperrors.ErrInternal
+	driver.ID = bson.NewObjectID()
+	if _, err := r.collection.InsertOne(ctx, driver); err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			return nil, domain.ErrDriverAlreadyExists
+		}
+		return nil, fmt.Errorf("insert driver: %w", err)
 	}
-	driver.ID = result.InsertedID.(bson.ObjectID)
 	return driver, nil
 }
 
-func (r *mongoRepository) FindById(ctx context.Context, id string) (*domain.Driver, error) {
+func (r *MongoRepository) FindById(ctx context.Context, id string) (*domain.Driver, error) {
 	objectID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return nil, apperrors.ErrInvalidInput
@@ -50,7 +54,7 @@ func (r *mongoRepository) FindById(ctx context.Context, id string) (*domain.Driv
 	return &driver, nil
 }
 
-func (r *mongoRepository) IncreaseTotalTrips(ctx context.Context, id string, tripDelta int) error {
+func (r *MongoRepository) IncreaseTotalTrips(ctx context.Context, id string, tripDelta int) error {
 	objectID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return apperrors.ErrInvalidInput
@@ -78,7 +82,7 @@ func (r *mongoRepository) IncreaseTotalTrips(ctx context.Context, id string, tri
 	return nil
 }
 
-func (r *mongoRepository) UpdateStatus(ctx context.Context, id string, status domain.DriverStatus) error {
+func (r *MongoRepository) UpdateStatus(ctx context.Context, id string, status domain.DriverStatus) error {
 	objectID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return apperrors.ErrInvalidInput
@@ -104,7 +108,7 @@ func (r *mongoRepository) UpdateStatus(ctx context.Context, id string, status do
 	return nil
 }
 
-func (r *mongoRepository) UpdateLastLogin(ctx context.Context, id string, loginTime time.Time) error {
+func (r *MongoRepository) UpdateLastLogin(ctx context.Context, id string, loginTime time.Time) error {
 	objectID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return apperrors.ErrInvalidInput
@@ -130,7 +134,7 @@ func (r *mongoRepository) UpdateLastLogin(ctx context.Context, id string, loginT
 	return nil
 }
 
-func (r *mongoRepository) UpdateRating(ctx context.Context, id string, rating float64) error {
+func (r *MongoRepository) UpdateRating(ctx context.Context, id string, rating float64) error {
 	objectID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return apperrors.ErrInvalidInput
@@ -153,5 +157,35 @@ func (r *mongoRepository) UpdateRating(ctx context.Context, id string, rating fl
 		return domain.ErrDriverNotFound
 	}
 
+	return nil
+}
+
+func (r *MongoRepository) EnsureIndexes(ctx context.Context) error {
+	var indexes []mongo.IndexModel
+	for _, field := range []string{"email", "phone", "car_number"} {
+		indexes = append(indexes, mongo.IndexModel{
+			Keys: bson.D{{Key: field, Value: 1}},
+			Options: options.Index().SetName("unique_driver_" + field).SetUnique(true).
+				SetPartialFilterExpression(bson.M{field: bson.M{"$gt": ""}}).
+				SetCollation(&options.Collation{Locale: "en", Strength: 2}),
+		})
+	}
+	_, err := r.collection.Indexes().CreateMany(ctx, indexes)
+	return err
+}
+
+func (r *MongoRepository) UpdateLocation(ctx context.Context, id string, location domain.Location) error {
+	objectID, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return apperrors.ErrInvalidInput
+	}
+	result, err := r.collection.UpdateOne(ctx, bson.M{"_id": objectID},
+		bson.M{"$set": bson.M{"location": location, "updated_at": time.Now().UTC()}})
+	if err != nil {
+		return fmt.Errorf("update driver location: %w", err)
+	}
+	if result.MatchedCount == 0 {
+		return domain.ErrDriverNotFound
+	}
 	return nil
 }

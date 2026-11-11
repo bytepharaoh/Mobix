@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/mongodb"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -18,10 +19,15 @@ import (
 func setupTestDB(t *testing.T) (Repository, func()) {
 	t.Helper()
 
+	if testing.Short() {
+		t.Skip("requires Docker")
+	}
 	ctx := context.Background()
 
 	// start a real MongoDB container using Docker
-	container, err := mongodb.Run(ctx, "mongo:7")
+	// Let glibc own rseq so MongoDB's allocator avoids the affected Linux kernel path.
+	container, err := mongodb.Run(ctx, "mongo:8.0",
+		testcontainers.WithEnv(map[string]string{"GLIBC_TUNABLES": "glibc.pthread.rseq=1"}))
 	if err != nil {
 		t.Fatalf("failed to start mongodb container: %v", err)
 	}
@@ -245,7 +251,7 @@ func TestUpdateStatus(t *testing.T) {
 			defer cleanup()
 
 			id := tt.setup(repo)
-			err := repo.UpdateStatus(context.Background(), id, tt.newStatus)
+			_, err := repo.Transition(context.Background(), id, domain.StatusRequested, tt.newStatus, bson.NewObjectID().Hex(), nil)
 
 			if tt.wantErr {
 				if err == nil {

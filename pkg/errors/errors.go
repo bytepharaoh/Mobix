@@ -103,3 +103,8 @@ var (
 		Status:  http.StatusServiceUnavailable,
 	}
 )
+
+var (
+	ErrConflict    = New(http.StatusConflict, "CONFLICT", "The resource changed. Retry with its current state")
+	ErrUnavailable = New(http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "A required service is temporarily unavailable")
+)

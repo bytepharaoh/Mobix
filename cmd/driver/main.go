@@ -2,70 +2,29 @@ package main
 
 import (
 	"context"
-	"log/slog"
-	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
+	"fmt"
 
-	"github.com/bytepharaoh/Mobix/internal/driver/db"
+	"github.com/bytepharaoh/Mobix/internal/driver/handler"
+	"github.com/bytepharaoh/Mobix/internal/driver/repository"
+	"github.com/bytepharaoh/Mobix/internal/driver/service"
 	"github.com/bytepharaoh/Mobix/pkg/config"
-	"github.com/bytepharaoh/Mobix/pkg/logger"
+	"github.com/bytepharaoh/Mobix/pkg/httpapi"
+	"github.com/bytepharaoh/Mobix/pkg/mongox"
 )
 
-func main() {
-	log := logger.New()
+func main() { httpapi.Main(run) }
 
-	database, err := db.Connect()
+func run(ctx context.Context) error {
+	database, err := mongox.Open(ctx)
 	if err != nil {
-		log.Error("connection to mongo failed", slog.String("error", err.Error()))
-		os.Exit(1)
+		return err
 	}
-	log.Info("connected to mongo successfully")
-
-	port := config.GetString("DRIVER_HTTP_PORT", "8083")
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write([]byte(`{"status":"ok","service":"driver"}`)); err != nil {
-			log.Error("failed to write response", slog.String("error", err.Error()))
-		}
-	})
-
-	srv := &http.Server{
-		Addr:         ":" + port,
-		Handler:      mux,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  120 * time.Second,
+	defer mongox.Close(database.Client())
+	repo := repository.NewMongoRepository(database)
+	if err := repo.EnsureIndexes(ctx); err != nil {
+		return fmt.Errorf("prepare driver indexes: %w", err)
 	}
-
-	go func() {
-		log.Info("driver service starting", slog.String("port", port))
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Error("server error", slog.String("error", err.Error()))
-			os.Exit(1)
-		}
-	}()
-
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-
-	log.Info("shutting down gracefully...")
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	if err := db.Disconnect(database); err != nil {
-		log.Error("failed to disconnect from mongo", slog.String("error", err.Error()))
-	} else {
-		log.Info("disconnected from mongo successfully")
-	}
-
-	if err := srv.Shutdown(ctx); err != nil {
-		log.Error("shutdown error", slog.String("error", err.Error()))
-	}
+	mux := httpapi.Mux("driver", func(ctx context.Context) error { return database.Client().Ping(ctx, nil) })
+	handler.Register(mux, service.New(repo))
+	return httpapi.Run(ctx, config.GetString("DRIVER_HTTP_PORT", "8083"), mux)
 }

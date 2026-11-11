@@ -1,7 +1,11 @@
 package domain
 
 import (
+	"strings"
 	"time"
+
+	"github.com/bytepharaoh/Mobix/pkg/geo"
+	"github.com/bytepharaoh/Mobix/pkg/messaging"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
@@ -20,22 +24,23 @@ const (
 // Location holds a GPS coordinate pair.
 // Used for both pickup and dropoff points.
 
-type Location struct {
-	Lat float64 `bson:"lat" json:"lat"`
-	Lng float64 `bson:"lng" json:"lng"`
-}
+type Location = geo.Location
 
 // Trip is the core domain object for the trip service.
 // One Trip = one document in MongoDB = one ride from request to completion.
 type Trip struct {
-	ID        bson.ObjectID `bson:"_id,omitempty" json:"id"`
-	RiderID   string        `bson:"rider_id"      json:"rider_id"`
-	DriverID  string        `bson:"driver_id"     json:"driver_id,omitempty"`
-	Pickup    Location      `bson:"pickup"        json:"pickup"`
-	Dropoff   Location      `bson:"dropoff"       json:"dropoff"`
-	Status    TripStatus    `bson:"status"        json:"status"`
-	CreatedAt time.Time     `bson:"created_at"    json:"created_at"`
-	UpdatedAt time.Time     `bson:"updated_at"    json:"updated_at"`
+	IdempotencyKey string                   `bson:"idempotency_key,omitempty" json:"-"`
+	PendingPayment *messaging.TripCompleted `bson:"pending_payment,omitempty" json:"-"`
+	FareCents      int64                    `bson:"fare_cents,omitempty" json:"fare_cents"`
+	Currency       string                   `bson:"currency,omitempty" json:"currency"`
+	ID             bson.ObjectID            `bson:"_id,omitempty" json:"id"`
+	RiderID        string                   `bson:"rider_id"      json:"rider_id"`
+	DriverID       string                   `bson:"driver_id"     json:"driver_id,omitempty"`
+	Pickup         Location                 `bson:"pickup"        json:"pickup"`
+	Dropoff        Location                 `bson:"dropoff"       json:"dropoff"`
+	Status         TripStatus               `bson:"status"        json:"status"`
+	CreatedAt      time.Time                `bson:"created_at"    json:"created_at"`
+	UpdatedAt      time.Time                `bson:"updated_at"    json:"updated_at"`
 }
 
 // CreateTripRequest is what the HTTP handler receives from the client.
@@ -48,14 +53,19 @@ type CreateTripRequest struct {
 // Validate checks that the request has all required fields.
 // Called by the service before doing anything with the request.
 func (r *CreateTripRequest) Validate() error {
-	if r.RiderID == "" {
+	if strings.TrimSpace(r.RiderID) == "" || len(r.RiderID) > 128 {
 		return ErrMissingRiderID
 	}
-	if r.Pickup.Lat == 0 && r.Pickup.Lng == 0 {
+	if !r.Pickup.Valid() {
 		return ErrInvalidPickup
 	}
-	if r.Dropoff.Lat == 0 && r.Dropoff.Lng == 0 {
+	if !r.Dropoff.Valid() {
 		return ErrInvalidDropoff
 	}
 	return nil
+}
+
+type DriverActivity struct {
+	ActiveTripID   *bson.ObjectID `bson:"active_trip_id" json:"active_trip_id,omitempty"`
+	CompletedTrips int64          `bson:"completed_trips" json:"completed_trips"`
 }

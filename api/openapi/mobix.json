@@ -1,0 +1,1259 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Mobix API",
+    "version": "1.0.0",
+    "description": "Ride-sharing backend for driver registration, trip dispatch and simulated payments. The Compose gateway is loopback-only. A bearer token is required when MOBIX_API_KEY is configured."
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Drivers"
+    },
+    {
+      "name": "Trips"
+    },
+    {
+      "name": "Payments"
+    },
+    {
+      "name": "System"
+    }
+  ],
+  "security": [
+    {
+      "gatewayToken": []
+    },
+    {}
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "System"
+        ],
+        "operationId": "getHealth",
+        "summary": "Check liveness",
+        "description": "Check whether the gateway is serving requests.",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/ready": {
+      "get": {
+        "tags": [
+          "System"
+        ],
+        "operationId": "getReadiness",
+        "summary": "Check readiness",
+        "description": "Check HTTP readiness of the trip, driver and payment services and their databases.",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A backend is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/v1/drivers": {
+      "post": {
+        "tags": [
+          "Drivers"
+        ],
+        "operationId": "registerDriver",
+        "summary": "Register a driver",
+        "description": "Create an offline driver. Email, phone and license plate must be unique.",
+        "responses": {
+          "201": {
+            "description": "Resource created or previous trip returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Driver"
+                }
+              }
+            },
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Relative path of the resource"
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request fields or JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A driver already uses the same email, phone or license plate",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A valid bearer token is required when a gateway API key is configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is temporarily unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request body exceeds 64 KiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriverInput"
+              },
+              "example": {
+                "name": "Alex Morgan",
+                "email": "alex@example.test",
+                "phone": "+12025550101",
+                "carNumber": "MBX-101",
+                "carModel": "Toyota Prius",
+                "location": {
+                  "lat": 40.73061,
+                  "lng": -73.935242
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/drivers/{id}": {
+      "get": {
+        "tags": [
+          "Drivers"
+        ],
+        "operationId": "getDriver",
+        "summary": "Read a driver",
+        "description": "Read a registered driver, including their declared availability and most recent location.",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Driver"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed ID or invalid request fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource was not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A valid bearer token is required when a gateway API key is configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is temporarily unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "description": "24-character MongoDB ObjectID"
+          }
+        ]
+      }
+    },
+    "/v1/drivers/{id}/availability": {
+      "patch": {
+        "tags": [
+          "Drivers"
+        ],
+        "operationId": "setAvailability",
+        "summary": "Set driver availability",
+        "description": "Opt in or out of future assignments. The active trip remains owned by the trip service.",
+        "responses": {
+          "204": {
+            "description": "Update applied"
+          },
+          "400": {
+            "description": "Malformed ID or invalid request fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource was not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A valid bearer token is required when a gateway API key is configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is temporarily unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request body exceeds 64 KiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "description": "24-character MongoDB ObjectID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Availability"
+              },
+              "example": {
+                "status": "available"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/drivers/{id}/location": {
+      "patch": {
+        "tags": [
+          "Drivers"
+        ],
+        "operationId": "updateLocation",
+        "summary": "Update driver location",
+        "description": "Store the latest reported GPS coordinates.",
+        "responses": {
+          "204": {
+            "description": "Update applied"
+          },
+          "400": {
+            "description": "Malformed ID or invalid request fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource was not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A valid bearer token is required when a gateway API key is configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is temporarily unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request body exceeds 64 KiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "description": "24-character MongoDB ObjectID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Location"
+              },
+              "example": {
+                "lat": 40.73061,
+                "lng": -73.935242
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/drivers/{id}/activity": {
+      "get": {
+        "tags": [
+          "Drivers"
+        ],
+        "operationId": "getDriverActivity",
+        "summary": "Read driver activity",
+        "description": "Read effective status, any active trip and the number of completed trips.",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriverActivity"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed ID or invalid request fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource was not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A valid bearer token is required when a gateway API key is configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is temporarily unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "description": "24-character MongoDB ObjectID"
+          }
+        ]
+      }
+    },
+    "/v1/trips": {
+      "post": {
+        "tags": [
+          "Trips"
+        ],
+        "operationId": "requestTrip",
+        "summary": "Request a ride",
+        "description": "Save a pickup and drop-off and receive an estimated fare in USD cents.",
+        "responses": {
+          "201": {
+            "description": "Resource created or previous trip returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Trip"
+                }
+              }
+            },
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Relative path of the resource"
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request fields or JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The key was already used with different trip details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A valid bearer token is required when a gateway API key is configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is temporarily unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request body exceeds 64 KiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TripInput"
+              },
+              "example": {
+                "rider_id": "rider-demo",
+                "pickup": {
+                  "lat": 40.73061,
+                  "lng": -73.935242
+                },
+                "dropoff": {
+                  "lat": 40.74844,
+                  "lng": -73.98566
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Optional retry key. Use the same key and body after a timeout.",
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          }
+        ]
+      }
+    },
+    "/v1/trips/{id}": {
+      "get": {
+        "tags": [
+          "Trips"
+        ],
+        "operationId": "getTrip",
+        "summary": "Read a trip",
+        "description": "Check current trip status and fare.",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Trip"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed ID or invalid request fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource was not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A valid bearer token is required when a gateway API key is configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is temporarily unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "description": "24-character MongoDB ObjectID"
+          }
+        ]
+      }
+    },
+    "/v1/trips/{id}/status": {
+      "patch": {
+        "tags": [
+          "Trips"
+        ],
+        "operationId": "transitionTrip",
+        "summary": "Transition a trip",
+        "description": "Assign an available driver with driver_id, start an assigned trip, or complete an in-progress trip. Cancel from requested or assigned. Completion queues a simulated payment.",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Trip"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed ID or invalid request fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource was not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Driver is unavailable, already assigned, or the resource changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "This transition is invalid for the current trip status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A valid bearer token is required when a gateway API key is configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is temporarily unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request body exceeds 64 KiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "description": "24-character MongoDB ObjectID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TripTransition"
+              },
+              "example": {
+                "status": "assigned",
+                "driver_id": "000000000000000000000001"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/payments/{tripID}": {
+      "get": {
+        "tags": [
+          "Payments"
+        ],
+        "operationId": "getPayment",
+        "summary": "Read a payment receipt",
+        "description": "Read the simulated receipt for a completed trip. Processing is asynchronous, so retry briefly on PAYMENT_NOT_FOUND.",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Receipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed ID or invalid request fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource was not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A valid bearer token is required when a gateway API key is configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is temporarily unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "tripID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "description": "24-character MongoDB ObjectID"
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Location": {
+        "type": "object",
+        "required": [
+          "lat",
+          "lng"
+        ],
+        "properties": {
+          "lat": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90
+          },
+          "lng": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "DriverInput": {
+        "type": "object",
+        "required": [
+          "name",
+          "email",
+          "phone",
+          "carNumber",
+          "carModel",
+          "location"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "phone": {
+            "type": "string",
+            "pattern": "^\\+[1-9][0-9]{7,14}$"
+          },
+          "carNumber": {
+            "type": "string"
+          },
+          "carModel": {
+            "type": "string"
+          },
+          "location": {
+            "$ref": "#/components/schemas/Location"
+          }
+        }
+      },
+      "Driver": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "email",
+          "phone",
+          "carNumber",
+          "carModel",
+          "location",
+          "status",
+          "rating",
+          "lastLoginAt",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{24}$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "phone": {
+            "type": "string",
+            "pattern": "^\\+[1-9][0-9]{7,14}$"
+          },
+          "carNumber": {
+            "type": "string"
+          },
+          "carModel": {
+            "type": "string"
+          },
+          "location": {
+            "$ref": "#/components/schemas/Location"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "available",
+              "offline",
+              "on_trip"
+            ]
+          },
+          "rating": {
+            "type": "number"
+          },
+          "lastLoginAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "TripInput": {
+        "type": "object",
+        "required": [
+          "rider_id",
+          "pickup",
+          "dropoff"
+        ],
+        "properties": {
+          "rider_id": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "pickup": {
+            "$ref": "#/components/schemas/Location"
+          },
+          "dropoff": {
+            "$ref": "#/components/schemas/Location"
+          }
+        }
+      },
+      "Trip": {
+        "type": "object",
+        "required": [
+          "id",
+          "rider_id",
+          "pickup",
+          "dropoff",
+          "status",
+          "fare_cents",
+          "currency",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{24}$"
+          },
+          "rider_id": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "pickup": {
+            "$ref": "#/components/schemas/Location"
+          },
+          "dropoff": {
+            "$ref": "#/components/schemas/Location"
+          },
+          "driver_id": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{24}$"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "requested",
+              "assigned",
+              "in_progress",
+              "completed",
+              "cancelled"
+            ]
+          },
+          "fare_cents": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "USD"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Receipt": {
+        "type": "object",
+        "required": [
+          "trip_id",
+          "event_id",
+          "amount_cents",
+          "currency",
+          "status",
+          "recorded_at"
+        ],
+        "properties": {
+          "trip_id": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{24}$"
+          },
+          "event_id": {
+            "type": "string"
+          },
+          "amount_cents": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "USD"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "simulated_paid"
+            ]
+          },
+          "recorded_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Health": {
+        "type": "object",
+        "required": [
+          "service",
+          "status"
+        ],
+        "properties": {
+          "service": {
+            "type": "string",
+            "enum": [
+              "gateway"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "ready"
+            ]
+          }
+        }
+      },
+      "TripTransition": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "assigned",
+              "in_progress",
+              "completed",
+              "cancelled"
+            ]
+          },
+          "driver_id": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{24}$"
+          }
+        }
+      },
+      "Availability": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "available",
+              "offline"
+            ]
+          }
+        }
+      },
+      "DriverActivity": {
+        "type": "object",
+        "required": [
+          "status",
+          "availability",
+          "completed_trips"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "available",
+              "offline",
+              "on_trip"
+            ]
+          },
+          "availability": {
+            "type": "string",
+            "enum": [
+              "available",
+              "offline",
+              "on_trip"
+            ]
+          },
+          "active_trip_id": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{24}$"
+          },
+          "completed_trips": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "gatewayToken": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}

@@ -33,3 +33,5 @@ var (
 		Status:  http.StatusUnprocessableEntity,
 	}
 )
+
+var ErrDriverAssigned = apperrors.New(http.StatusConflict, "DRIVER_ASSIGNED", "The driver already has an active trip")
