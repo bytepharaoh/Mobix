@@ -31,6 +31,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // This suite exercises account sessions, gateway delegation, and resource access
@@ -136,23 +137,44 @@ func TestAuthenticatedRideAccess(t *testing.T) {
 		return session
 	}
 	operator := login(operatorEmail, operatorPassword)
-	newAccount := func(name string, role authn.Role) accounts.LoginResult {
+	fixtureAccount := func(name string, role authn.Role) accounts.LoginResult {
 		t.Helper()
 		email := name + "@example.test"
 		password := "integration-password-" + name
-		call(operator.Token, http.MethodPost, "/v1/accounts", map[string]string{
-			"email": email, "password": password, "role": string(role),
-		}, http.StatusCreated, nil)
+		// Seed the actors for the permission matrix. Account provisioning is
+		// exercised separately below and by the full Compose demo.
+		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = database.Collection("accounts").InsertOne(ctx, bson.M{
+			"_id": bson.NewObjectID().Hex(), "email": email, "role": role, "password_hash": hash,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
 		session := login(email, password)
 		if session.Account.Role != role {
 			t.Fatalf("created account has role %q, want %q", session.Account.Role, role)
 		}
 		return session
 	}
-	riderA := newAccount("rider-a", authn.Rider)
-	riderB := newAccount("rider-b", authn.Rider)
-	driverA := newAccount("driver-a", authn.Driver)
-	driverB := newAccount("driver-b", authn.Driver)
+	riderA := fixtureAccount("rider-a", authn.Rider)
+	riderB := fixtureAccount("rider-b", authn.Rider)
+	driverA := fixtureAccount("driver-a", authn.Driver)
+	driverB := fixtureAccount("driver-b", authn.Driver)
+	call(operator.Token, http.MethodPost, "/v1/accounts", map[string]string{
+		"email": "provisioned@example.test", "password": "provisioned-integration-password", "role": "rider",
+	}, http.StatusCreated, nil)
+	var provisioned struct {
+		PasswordHash []byte `bson:"password_hash"`
+	}
+	if err := database.Collection("accounts").FindOne(ctx, bson.M{"email": "provisioned@example.test"}).Decode(&provisioned); err != nil {
+		t.Fatal(err)
+	}
+	if cost, err := bcrypt.Cost(provisioned.PasswordHash); err != nil || cost != 12 {
+		t.Fatalf("unexpected runtime password hash cost: %d, %v", cost, err)
+	}
 	for _, token := range []string{"", "invalid-token"} {
 		call(token, http.MethodGet, "/v1/auth/me", nil, http.StatusUnauthorized, nil)
 	}
