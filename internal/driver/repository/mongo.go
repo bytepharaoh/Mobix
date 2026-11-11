@@ -161,7 +161,10 @@ func (r *MongoRepository) UpdateRating(ctx context.Context, id string, rating fl
 }
 
 func (r *MongoRepository) EnsureIndexes(ctx context.Context) error {
-	var indexes []mongo.IndexModel
+	indexes := []mongo.IndexModel{{
+		Keys:    bson.D{{Key: "account_id", Value: 1}},
+		Options: options.Index().SetName("unique_driver_account").SetUnique(true).SetSparse(true),
+	}}
 	for _, field := range []string{"email", "phone", "car_number"} {
 		indexes = append(indexes, mongo.IndexModel{
 			Keys: bson.D{{Key: field, Value: 1}},
@@ -188,4 +191,16 @@ func (r *MongoRepository) UpdateLocation(ctx context.Context, id string, locatio
 		return domain.ErrDriverNotFound
 	}
 	return nil
+}
+
+func (r *MongoRepository) FindByAccountID(ctx context.Context, accountID string) (*domain.Driver, error) {
+	var driver domain.Driver
+	err := r.collection.FindOne(ctx, bson.M{"account_id": accountID}).Decode(&driver)
+	if err == mongo.ErrNoDocuments {
+		return nil, domain.ErrDriverNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find driver account: %w", err)
+	}
+	return &driver, nil
 }

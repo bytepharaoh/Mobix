@@ -8,7 +8,10 @@ resources:
 secretGenerator:
   - name: mobix-dependencies
     literals:
-      - gateway-api-key=mobix-demo-key
+      - internal-signing-key=mobix-demo-internal-key-replace-before-sharing
+      - bootstrap-email=operator@mobix.test
+      - bootstrap-password=mobix-demo-operator-password
+      - accounts-mongo-uri=mongodb://admin:mobix-demo@mongodb:27017/?authSource=admin
       - trip-mongo-uri=mongodb://admin:mobix-demo@mongodb:27017/?authSource=admin
       - driver-mongo-uri=mongodb://admin:mobix-demo@mongodb:27017/?authSource=admin
       - payment-mongo-uri=mongodb://admin:mobix-demo@mongodb:27017/?authSource=admin

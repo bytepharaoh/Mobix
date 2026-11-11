@@ -28,17 +28,34 @@ spec:
           image: mobix/gateway:local
           imagePullPolicy: IfNotPresent
           env:
+            - name: MOBIX_INTERNAL_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mobix-dependencies
+                  key: internal-signing-key
             - name: TRIP_URL
               value: "http://trip:8082"
             - name: DRIVER_URL
               value: "http://driver:8083"
             - name: PAYMENT_URL
               value: "http://payment:8084"
-            - name: MOBIX_API_KEY
+            - name: MONGO_DB
+              value: mobix_accounts
+            - name: MONGO_URI
               valueFrom:
                 secretKeyRef:
                   name: mobix-dependencies
-                  key: gateway-api-key
+                  key: accounts-mongo-uri
+            - name: MOBIX_BOOTSTRAP_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: mobix-dependencies
+                  key: bootstrap-email
+            - name: MOBIX_BOOTSTRAP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mobix-dependencies
+                  key: bootstrap-password
           ports:
             - name: http
               containerPort: 8080

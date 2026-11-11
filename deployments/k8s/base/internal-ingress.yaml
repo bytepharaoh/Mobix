@@ -40,3 +40,23 @@ spec:
               app.kubernetes.io/part-of: mobix
       ports:
         - {protocol: TCP, port: 8083}
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: payment-to-trip
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: trip
+      app.kubernetes.io/part-of: mobix
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: payment
+              app.kubernetes.io/part-of: mobix
+      ports:
+        - {protocol: TCP, port: 8082}

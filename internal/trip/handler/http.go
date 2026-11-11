@@ -11,6 +11,7 @@ import (
 	driver "github.com/bytepharaoh/Mobix/internal/driver/domain"
 	"github.com/bytepharaoh/Mobix/internal/trip/domain"
 	"github.com/bytepharaoh/Mobix/internal/trip/service"
+	"github.com/bytepharaoh/Mobix/pkg/authn"
 	apperrors "github.com/bytepharaoh/Mobix/pkg/errors"
 	"github.com/bytepharaoh/Mobix/pkg/geo"
 	"github.com/bytepharaoh/Mobix/pkg/httpapi"
@@ -21,42 +22,41 @@ type DriverActivityReader interface {
 	DriverActivity(context.Context, string) (domain.DriverActivity, error)
 }
 
-func Register(mux *http.ServeMux, trips *service.TripService, activity DriverActivityReader, driverURL *url.URL) {
+func Register(mux *http.ServeMux, trips *service.TripService, activity DriverActivityReader, driverURL *url.URL, delegation authn.Delegation) {
 	client := &http.Client{Timeout: 3 * time.Second}
-	driverStatus := func(ctx context.Context, id string) (driver.DriverStatus, error) {
-		request, err := http.NewRequestWithContext(ctx, http.MethodGet, driverURL.JoinPath("v1", "drivers", id).String(), nil)
+	driverStatus := func(ctx context.Context, id string) (driver.DispatchProfile, error) {
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, driverURL.JoinPath("internal", "drivers", id, "dispatch-profile").String(), nil)
 		if err != nil {
-			return "", fmt.Errorf("build driver request: %w", err)
+			return driver.DispatchProfile{}, fmt.Errorf("build driver request: %w", err)
 		}
+		delegation.Sign(request, "driver", authn.Actor{Role: authn.Service})
 		response, err := client.Do(request)
 		if err != nil {
-			return "", apperrors.ErrUnavailable
+			return driver.DispatchProfile{}, apperrors.ErrUnavailable
 		}
 		defer response.Body.Close()
 		switch response.StatusCode {
 		case http.StatusNotFound:
-			return "", driver.ErrDriverNotFound
+			return driver.DispatchProfile{}, driver.ErrDriverNotFound
 		case http.StatusOK:
-			var value struct {
-				Status driver.DriverStatus `json:"status"`
-			}
+			var value driver.DispatchProfile
 			if err := json.NewDecoder(response.Body).Decode(&value); err != nil {
-				return "", apperrors.ErrUnavailable
+				return driver.DispatchProfile{}, apperrors.ErrUnavailable
 			}
-			return value.Status, nil
+			return value, nil
 		default:
-			return "", apperrors.ErrUnavailable
+			return driver.DispatchProfile{}, apperrors.ErrUnavailable
 		}
 	}
-	checkDriver := func(ctx context.Context, id string) error {
+	checkDriver := func(ctx context.Context, id string) (string, error) {
 		status, err := driverStatus(ctx, id)
 		if err != nil {
-			return err
+			return "", err
 		}
-		if status != driver.StatusAvailable {
-			return driver.ErrDriverBusy
+		if status.Status != driver.StatusAvailable {
+			return "", driver.ErrDriverBusy
 		}
-		return nil
+		return status.AccountID, nil
 	}
 	mux.HandleFunc("GET /v1/drivers/{id}/activity", func(w http.ResponseWriter, r *http.Request) {
 		id, err := bson.ObjectIDFromHex(r.PathValue("id"))
@@ -69,12 +69,17 @@ func Register(mux *http.ServeMux, trips *service.TripService, activity DriverAct
 			httpapi.Error(w, err)
 			return
 		}
+		actor := authn.From(r.Context())
+		if actor.Role != authn.Operator && (actor.Role != authn.Driver || actor.ID == "" || availability.AccountID != actor.ID) {
+			httpapi.Error(w, driver.ErrDriverNotFound)
+			return
+		}
 		trips, err := activity.DriverActivity(r.Context(), id.Hex())
 		if err != nil {
 			httpapi.Error(w, err)
 			return
 		}
-		status := availability
+		status := availability.Status
 		if trips.ActiveTripID != nil {
 			status = driver.StatusOnTrip
 		}
@@ -82,11 +87,10 @@ func Register(mux *http.ServeMux, trips *service.TripService, activity DriverAct
 			domain.DriverActivity
 			Availability driver.DriverStatus `json:"availability"`
 			Status       driver.DriverStatus `json:"status"`
-		}{trips, availability, status})
+		}{trips, availability.Status, status})
 	})
 	mux.HandleFunc("POST /v1/trips", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			RiderID string    `json:"rider_id"`
 			Pickup  geo.Input `json:"pickup"`
 			Dropoff geo.Input `json:"dropoff"`
 		}
@@ -105,7 +109,7 @@ func Register(mux *http.ServeMux, trips *service.TripService, activity DriverAct
 			return
 		}
 		trip, err := trips.CreateTrip(r.Context(), domain.CreateTripRequest{
-			RiderID: body.RiderID, Pickup: pickup, Dropoff: dropoff,
+			Pickup: pickup, Dropoff: dropoff,
 		}, r.Header.Get("Idempotency-Key"))
 		if err != nil {
 			httpapi.Error(w, err)

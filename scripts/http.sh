@@ -2,9 +2,13 @@
 base_url=${MOBIX_URL:-http://127.0.0.1:8080}
 base_url=${base_url%/}
 auth=()
-if [[ -n ${MOBIX_API_KEY:-} ]]; then
-  auth=(-H "Authorization: Bearer ${MOBIX_API_KEY}")
-fi
+
+use_token() {
+  auth=()
+  if [[ -n ${1:-} ]]; then
+    auth=(-H "Authorization: Bearer $1")
+  fi
+}
 
 request() {
   local method=$1 path=$2
@@ -19,6 +23,37 @@ json() {
   request "$method" "$path" -H 'Content-Type: application/json' --data "$body" "$@"
 }
 
+login() {
+  local email=$1 password=$2
+  shift 2
+  json POST /v1/auth/login "$(jq -nc --arg email "$email" --arg password "$password" '
+    {email:$email,password:$password}')" "$@"
+}
+
+login_operator() {
+  local email=${MOBIX_OPERATOR_EMAIL:-${MOBIX_BOOTSTRAP_EMAIL:-operator@mobix.test}}
+  local password=${MOBIX_OPERATOR_PASSWORD:-${MOBIX_BOOTSTRAP_PASSWORD:-mobix-local-operator-password}}
+  if [[ -z $email || -z $password ]]; then
+    printf 'Export MOBIX_OPERATOR_EMAIL and MOBIX_OPERATOR_PASSWORD, or the bootstrap operator credentials, before running this script.\n' >&2
+    return 1
+  fi
+  local session
+  session=$(login "$email" "$password" --fail) || return
+  jq -e '.account.role == "operator"' <<< "$session" >/dev/null || return
+  operator_token=$(jq -er '.access_token' <<< "$session") || return
+  use_token "$operator_token"
+}
+
+provision_account() {
+  local role=$1 suffix=$2 password=$3
+  local email="${role}-${suffix}@example.test"
+  local account
+  account=$(json POST /v1/accounts "$(jq -nc --arg email "$email" --arg password "$password" --arg role "$role" '
+    {email:$email,password:$password,role:$role}')" --fail) || return
+  jq -e --arg role "$role" '.role == $role and (.id | length > 0)' <<< "$account" >/dev/null || return
+  login "$email" "$password" --fail
+}
+
 new_driver() {
   local suffix=$1
   shift
@@ -31,10 +66,7 @@ new_driver() {
 }
 
 new_trip() {
-  local rider=$1
-  shift
-  json POST /v1/trips "$(jq -nc --arg rider "$rider" '
-    {rider_id:$rider,pickup:{lat:40.73061,lng:-73.935242},dropoff:{lat:40.74844,lng:-73.98566}}')" "$@"
+  json POST /v1/trips '{"pickup":{"lat":40.73061,"lng":-73.935242},"dropoff":{"lat":40.74844,"lng":-73.98566}}' "$@"
 }
 
 transition() {

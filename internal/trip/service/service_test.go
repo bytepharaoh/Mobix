@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	"github.com/bytepharaoh/Mobix/pkg/messaging"
+	"github.com/bytepharaoh/Mobix/pkg/authn"
 	"testing"
 
 	"go.uber.org/mock/gomock"
@@ -37,13 +37,15 @@ func TestCreateTrip(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "fails when rider_id is missing",
+			name: "takes rider identity from the authenticated account",
 			req: domain.CreateTripRequest{
-				Pickup:  domain.Location{Lat: 30.0, Lng: 31.0},
+				Pickup:  domain.Location{Lat: 30, Lng: 31},
 				Dropoff: domain.Location{Lat: 30.1, Lng: 31.1},
 			},
-			mock:    func(repo *mocks.MockRepository) {},
-			wantErr: true,
+			mock: func(repo *mocks.MockRepository) {
+				repo.EXPECT().Create(gomock.Any(), gomock.Any()).
+					DoAndReturn(func(_ context.Context, trip *domain.Trip) (*domain.Trip, error) { return trip, nil })
+			},
 		},
 		{
 			name: "fails when pickup is outside coordinate range",
@@ -63,7 +65,7 @@ func TestCreateTrip(t *testing.T) {
 			tt.mock(mockRepo)
 
 			svc := New(mockRepo)
-			result, err := svc.CreateTrip(context.Background(), tt.req, "demo-key")
+			result, err := svc.CreateTrip(authn.WithActor(context.Background(), authn.Actor{ID: "rider123", Role: authn.Rider}), tt.req, "demo-key")
 
 			if tt.wantErr {
 				if err == nil {
@@ -77,7 +79,7 @@ func TestCreateTrip(t *testing.T) {
 				return
 			}
 
-			if result.Pickup != tt.req.Pickup || result.Dropoff != tt.req.Dropoff || result.FareCents < 350 || result.IdempotencyKey == "" {
+			if result.RiderID != "rider123" || result.RiderAccountID != "rider123" || result.Pickup != tt.req.Pickup || result.Dropoff != tt.req.Dropoff || result.FareCents < 350 || result.ScopedIdempotencyKey == "" {
 				t.Fatalf("incorrect trip: %+v", result)
 			}
 			if result.Status != domain.StatusRequested {
@@ -89,7 +91,7 @@ func TestCreateTrip(t *testing.T) {
 
 func TestUpdateTripStatus(t *testing.T) {
 	const driverID = "0123456789abcdef01234567"
-	check := func(context.Context, string) error { return nil }
+	check := func(context.Context, string) (string, error) { return "driver-account", nil }
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -109,7 +111,7 @@ func TestUpdateTripStatus(t *testing.T) {
 					FindByID(gomock.Any(), "abc123").
 					Return(&domain.Trip{Status: domain.StatusRequested}, nil)
 				repo.EXPECT().
-					Transition(gomock.Any(), "abc123", domain.StatusRequested, domain.StatusAssigned, driverID, (*messaging.TripCompleted)(nil)).
+					Transition(gomock.Any(), "abc123", gomock.Any(), domain.Transition{Status: domain.StatusAssigned, DriverID: driverID, DriverAccountID: "driver-account"}).
 					Return(&domain.Trip{Status: domain.StatusAssigned, DriverID: driverID}, nil)
 			},
 			wantErr: false,
@@ -155,7 +157,7 @@ func TestUpdateTripStatus(t *testing.T) {
 			if tt.status == domain.StatusAssigned {
 				driver = driverID
 			}
-			_, err := svc.UpdateTripStatus(context.Background(), tt.id, tt.status, driver, check)
+			_, err := svc.UpdateTripStatus(authn.WithActor(context.Background(), authn.Actor{ID: "operator", Role: authn.Operator}), tt.id, tt.status, driver, check)
 
 			if tt.wantErr {
 				if err == nil {

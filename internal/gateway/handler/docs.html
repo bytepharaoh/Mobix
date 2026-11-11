@@ -49,7 +49,8 @@ pre { max-height: 420px; overflow: auto; white-space: pre-wrap; overflow-wrap: a
 <header class="hero">
 <div class="label">Developer reference</div>
 <h1>Mobix API Explorer</h1>
-<p>Register drivers, dispatch rides and retrieve simulated payment receipts. Try requests against this gateway.</p>
+<p>Register drivers, dispatch rides and retrieve simulated payment receipts. Sign in and try requests against this gateway.</p>
+<p id="identity" role="status">Sign in to send protected requests.</p>
 </header>
 <div class="grid">
 <section aria-label="API operations" id="operations" class="operations"></section>
@@ -84,8 +85,11 @@ function show(method, path, operation, button) {
     input.required = Boolean(param.required);
     fields.push([param, input]);
   }
-  const auth = operation.security?.length === 0 ? null : field('Gateway API key (if configured)', 'password', token);
-  if (auth) auth.addEventListener('input', () => { token = auth.value; });
+  const auth = operation.security?.length === 0 ? null : field('Access token', 'password', token);
+  if (auth) auth.addEventListener('input', () => {
+    token = auth.value;
+    document.getElementById('identity').textContent = token ? 'Using a pasted access token.' : 'Sign in to send protected requests.';
+  });
   const example = operation.requestBody?.content['application/json']?.example;
   const body = example ? field('JSON request body', 'textarea', JSON.stringify(example, null, 2)) : null;
   const execute = node('button', 'Send request', 'execute');
@@ -109,7 +113,17 @@ function show(method, path, operation, button) {
       const text = await response.text();
       let formatted = text;
       if (response.headers.get('Content-Type')?.includes('application/json') && text) {
-        formatted = JSON.stringify(JSON.parse(text), null, 2);
+        const value = JSON.parse(text);
+        formatted = JSON.stringify(value, null, 2);
+        if (path === '/v1/auth/login' && response.ok && value.access_token) {
+          token = value.access_token;
+          document.getElementById('identity').textContent = 'Signed in as ' + value.account.email + ' (' + value.account.role + ')';
+        }
+      }
+      if (path === '/v1/auth/logout' && response.ok) {
+        token = '';
+        if (auth) auth.value = '';
+        document.getElementById('identity').textContent = 'Signed out.';
       }
       output.textContent = 'HTTP ' + response.status + '\n' + formatted;
     } catch (error) {

@@ -10,6 +10,22 @@ import (
 )
 
 func Register(mux *http.ServeMux, drivers *service.Service) {
+	mux.HandleFunc("GET /internal/drivers/{id}/dispatch-profile", func(w http.ResponseWriter, r *http.Request) {
+		profile, err := drivers.DispatchProfile(r.Context(), r.PathValue("id"))
+		if err != nil {
+			httpapi.Error(w, err)
+			return
+		}
+		httpapi.JSON(w, http.StatusOK, profile)
+	})
+	mux.HandleFunc("GET /v1/drivers/me", func(w http.ResponseWriter, r *http.Request) {
+		profile, err := drivers.Me(r.Context())
+		if err != nil {
+			httpapi.Error(w, err)
+			return
+		}
+		httpapi.JSON(w, http.StatusOK, profile)
+	})
 	mux.HandleFunc("POST /v1/drivers", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Name      string    `json:"name"`
