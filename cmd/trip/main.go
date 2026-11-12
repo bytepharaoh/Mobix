@@ -46,6 +46,7 @@ func run(ctx context.Context) error {
 	worker, cancel := context.WithCancel(ctx)
 	var workers sync.WaitGroup
 	workers.Go(func() { messaging.RunPublisher(worker, config.RabbitURL(), repo) })
+	workers.Go(func() { messaging.RunRidePublisher(worker, config.RabbitURL(), repo) })
 	workers.Go(func() { matcher.Run(worker) })
 	defer func() {
 		cancel()

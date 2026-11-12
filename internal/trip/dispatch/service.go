@@ -16,9 +16,9 @@ type Store interface {
 	FindByID(context.Context, string) (*domain.Trip, error)
 	DueDispatches(context.Context, time.Time, int64) ([]domain.Trip, error)
 	ActiveDrivers(context.Context, []string) (map[string]bool, error)
-	SaveDispatch(context.Context, bson.ObjectID, domain.Dispatch, bool) error
+	SaveDispatch(context.Context, *domain.Trip, domain.Dispatch, bool) error
 	OfferInbox(context.Context, string, time.Time) ([]domain.DriverOffer, error)
-	AcceptOffer(context.Context, bson.ObjectID, domain.Offer) (*domain.Trip, error)
+	AcceptOffer(context.Context, *domain.Trip, domain.Offer) (*domain.Trip, error)
 }
 
 type Drivers interface {
@@ -63,7 +63,7 @@ func (s *Service) Accept(ctx context.Context, tripID, offerID string) (*domain.T
 		profile.LocationUpdatedAt.Before(time.Now().Add(-s.config.LocationMaxAge)) {
 		return nil, driver.ErrDriverBusy
 	}
-	assigned, err := s.store.AcceptOffer(ctx, trip.ID, offer)
+	assigned, err := s.store.AcceptOffer(ctx, trip, offer)
 	if !errors.Is(err, apperrors.ErrConflict) {
 		return assigned, err
 	}
@@ -95,7 +95,7 @@ func (s *Service) Decline(ctx context.Context, tripID, offerID string) error {
 		if err := openOffer(trip, offer, now); err != nil {
 			return err
 		}
-		next := *trip.Dispatch
+		next := trip.Dispatch.Clone()
 		hasPending := false
 		for i := range next.Offers {
 			item := &next.Offers[i]
@@ -107,7 +107,7 @@ func (s *Service) Decline(ctx context.Context, tripID, offerID string) error {
 		if !hasPending {
 			next.NextAttemptAt = now
 		}
-		err = s.store.SaveDispatch(ctx, trip.ID, next, true)
+		err = s.store.SaveDispatch(ctx, trip, next, true)
 		if !errors.Is(err, apperrors.ErrConflict) {
 			return err
 		}

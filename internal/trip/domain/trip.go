@@ -34,7 +34,9 @@ type Trip struct {
 	DriverAccountID      string                   `bson:"driver_account_id,omitempty" json:"-"`
 	ScopedIdempotencyKey string                   `bson:"scoped_idempotency_key,omitempty" json:"-"`
 	PendingPayment       *messaging.TripCompleted `bson:"pending_payment,omitempty" json:"-"`
+	PendingRideEvents    []messaging.RideEvent    `bson:"pending_ride_events,omitempty" json:"-"`
 	FareCents            int64                    `bson:"fare_cents,omitempty" json:"fare_cents"`
+	Version              int64                    `bson:"version" json:"version"`
 	Currency             string                   `bson:"currency,omitempty" json:"currency"`
 	ID                   bson.ObjectID            `bson:"_id,omitempty" json:"id"`
 	RiderID              string                   `bson:"rider_id"      json:"rider_id"`
