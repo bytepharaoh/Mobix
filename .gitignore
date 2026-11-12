@@ -31,6 +31,9 @@ go.work.sum
 # .idea/
 # .vscode/
 
+# macOS Finder metadata
+.DS_Store
+
 # Js files
 /node_modules
 bin/
