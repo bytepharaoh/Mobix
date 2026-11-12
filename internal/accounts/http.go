@@ -28,7 +28,15 @@ func (s *Service) Require(next http.Handler) http.Handler {
 }
 
 func (s *Service) RegisterHTTP(mux *http.ServeMux) {
-	mux.HandleFunc("POST /v1/auth/login", func(w http.ResponseWriter, r *http.Request) {
+	s.registerHTTP(mux, nil)
+}
+
+func (s *Service) RegisterHTTPWithLoginMiddleware(mux *http.ServeMux, middleware func(http.Handler) http.Handler) {
+	s.registerHTTP(mux, middleware)
+}
+
+func (s *Service) registerHTTP(mux *http.ServeMux, loginMiddleware func(http.Handler) http.Handler) {
+	var login http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Email    string `json:"email"`
 			Password string `json:"password"`
@@ -39,11 +47,18 @@ func (s *Service) RegisterHTTP(mux *http.ServeMux) {
 		}
 		result, err := s.Login(r.Context(), body.Email, body.Password)
 		if err != nil {
+			if errors.Is(err, errBusy) {
+				w.Header().Set("Retry-After", "1")
+			}
 			httpapi.Error(w, err)
 			return
 		}
 		httpapi.JSON(w, http.StatusOK, result)
 	})
+	if loginMiddleware != nil {
+		login = loginMiddleware(login)
+	}
+	mux.Handle("POST /v1/auth/login", login)
 	mux.Handle("GET /v1/auth/me", s.Require(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		account, _ := r.Context().Value(accountKey{}).(Account)
 		httpapi.JSON(w, http.StatusOK, account)

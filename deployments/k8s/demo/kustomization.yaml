@@ -5,6 +5,7 @@ resources:
   - ../base
   - mongodb.yaml
   - rabbitmq.yaml
+  - redis.yaml
 secretGenerator:
   - name: mobix-dependencies
     literals:
@@ -12,6 +13,8 @@ secretGenerator:
       - bootstrap-email=operator@mobix.test
       - bootstrap-password=mobix-demo-operator-password
       - accounts-mongo-uri=mongodb://admin:mobix-demo@mongodb:27017/?authSource=admin
+      - redis-url=redis://redis:6379/0
+      - rate-limit-key=mobix-demo-rate-limit-key-replace-before-sharing
       - trip-mongo-uri=mongodb://admin:mobix-demo@mongodb:27017/?authSource=admin
       - driver-mongo-uri=mongodb://admin:mobix-demo@mongodb:27017/?authSource=admin
       - payment-mongo-uri=mongodb://admin:mobix-demo@mongodb:27017/?authSource=admin

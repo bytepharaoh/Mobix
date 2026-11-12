@@ -13,6 +13,17 @@ x-mongo-env: &mongo-env
 x-identity-env: &identity-env
   MOBIX_INTERNAL_KEY: ${MOBIX_INTERNAL_KEY:-}
 
+x-rate-limit-env: &rate-limit-env
+  REDIS_URL: redis://redis:6379/0
+  RATE_LIMIT_KEY_SECRET: ${RATE_LIMIT_KEY_SECRET:-mobix-local-rate-limit-key-replace-before-sharing}
+  TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-}
+  RATE_LIMIT_LOGIN_IP: ${RATE_LIMIT_LOGIN_IP:-10/1m}
+  RATE_LIMIT_LOGIN_ACCOUNT: ${RATE_LIMIT_LOGIN_ACCOUNT:-5/15m}
+  RATE_LIMIT_RIDE_REQUEST: ${RATE_LIMIT_RIDE_REQUEST:-20/1m}
+  RATE_LIMIT_LOCATION_UPDATE: ${RATE_LIMIT_LOCATION_UPDATE:-120/1m}
+  RATE_LIMIT_OFFER_POLL: ${RATE_LIMIT_OFFER_POLL:-120/1m}
+  RATE_LIMIT_OFFER_RESPONSE: ${RATE_LIMIT_OFFER_RESPONSE:-30/1m}
+
 x-rabbit-env: &rabbit-env
   RABBITMQ_HOST: rabbitmq
   RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-mobix}
@@ -32,7 +43,7 @@ services:
       context: .
       args: {SERVICE: gateway}
     environment:
-      <<: [*mongo-env, *identity-env]
+      <<: [*mongo-env, *identity-env, *rate-limit-env]
       MONGO_DB: ${ACCOUNTS_MONGO_DB:-mobix_accounts}
       MOBIX_BOOTSTRAP_EMAIL: ${MOBIX_BOOTSTRAP_EMAIL:-}
       MOBIX_BOOTSTRAP_PASSWORD: ${MOBIX_BOOTSTRAP_PASSWORD:-}
@@ -45,6 +56,7 @@ services:
       trip: {condition: service_healthy}
       driver: {condition: service_healthy}
       payment: {condition: service_healthy}
+      redis: {condition: service_healthy}
     healthcheck:
       <<: *health
       test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:8080/ready"]
@@ -127,6 +139,20 @@ services:
     healthcheck:
       <<: *health
       test: [CMD, rabbitmq-diagnostics, -q, check_port_connectivity]
+
+  redis:
+    image: redis:8.2-alpine
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command: [redis-server, --dir, /tmp, --save, "", --appendonly, "no"]
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    healthcheck:
+      <<: *health
+      test: [CMD, redis-cli, ping]
 
 volumes:
   mongodb:

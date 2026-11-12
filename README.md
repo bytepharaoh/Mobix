@@ -1,6 +1,6 @@
 # Mobix
 
-Mobix is a Go backend for a ride-sharing workflow with individual rider, driver, and operator accounts. Register a driver, request a ride, and follow it from nearby driver offers through completion. RabbitMQ delivers completed rides to the payment service, which records a simulated receipt.
+Mobix is a Go backend for a ride-sharing workflow with individual rider, driver, and operator accounts. Register a driver, request a ride, and follow it from nearby driver offers through completion. Redis enforces distributed gateway quotas, and RabbitMQ delivers completed rides to the payment service, which records a simulated receipt.
 
 ## Quick start
 
@@ -52,6 +52,25 @@ Send `Authorization: Bearer <access_token>` on protected requests. The [OpenAPI 
 
 The gateway resolves the session identity and creates a short-lived service-specific signed assertion. Backend services verify the assertion and enforce their resource permissions. Trip obtains dispatch information through an authenticated internal driver endpoint. Payment checks access through Trip before returning a receipt.
 
+## Distributed rate limits
+
+Every gateway replica uses the same Redis token buckets. The atomic Lua check uses Redis server time, so concurrent replicas cannot overspend a bucket or drift because their clocks differ. Redis keys contain HMAC-SHA-256 subjects rather than raw account IDs, email addresses, or IP addresses. A `429 Too Many Requests` response includes `Retry-After` in seconds.
+
+| Gateway policy | Default | Subject |
+| --- | --- | --- |
+| Login IP | `10/1m` | Client IP |
+| Login account | `5/15m` | Normalized email, including unknown accounts |
+| Ride request | `20/1m` | Authenticated account |
+| Driver location | `120/1m` | Authenticated account |
+| Offer inbox polling | `120/1m` | Authenticated account |
+| Offer accept or decline | `30/1m` | Authenticated account |
+
+Each policy has a separate bucket. Exhausting offer polling therefore does not prevent a driver from accepting an open offer. Override the defaults with the `RATE_LIMIT_*` values in [`.env.example`](.env.example). Use a random value of at least 32 bytes for `RATE_LIMIT_KEY_SECRET`; rotating it resets and re-keys the buckets.
+
+The gateway does not trust `X-Forwarded-For` from direct clients. Set `TRUSTED_PROXY_CIDRS` to the comma-separated address ranges of the ingress hops that overwrite that header. The resolver removes trusted hops from right to left and uses the first untrusted address.
+
+If Redis becomes unavailable, login returns `503 RATE_LIMIT_UNAVAILABLE` so an outage cannot disable brute-force protection. Authenticated, account-scoped policies fail open so active rides can continue, and the gateway periodically logs the policy and failure mode without flooding logs. Redis is intentionally excluded from `/ready`; an outage does not remove all gateway replicas. Run `make rate-limit-demo` to verify the `429` contract and both outage paths. The implementation follows Redis' [atomic token-bucket guidance](https://redis.io/docs/latest/develop/use-cases/rate-limiter/redis-py/).
+
 ## Ride lifecycle
 
 | Step | Request | Result |
@@ -99,7 +118,7 @@ The original operator demo’s API explorer and simulated receipt. The current e
 
 ## How the services work together
 
-The **gateway** exposes the HTTP API. **Driver** manages registration, declared availability and location. **Trip** owns dispatch, the fare estimate, the state machine and driver activity derived from trip history. **Payment** consumes completion events and writes receipts to its own MongoDB database.
+The **gateway** exposes the HTTP API and shares rate-limit state through Redis. **Driver** manages registration, declared availability and location. **Trip** owns dispatch, the fare estimate, the state machine and driver activity derived from trip history. **Payment** consumes completion events and writes receipts to its own MongoDB database.
 
 ![Mobix service architecture showing HTTP calls, RabbitMQ events, and MongoDB access](docs/screenshots/Mobix%20Service%20Architecture%20Diagram.png)
 
@@ -113,7 +132,7 @@ Completing a trip writes its payment event into the trip document atomically. Th
 
 *The sequence uses illustrative endpoint labels. In Mobix, `POST /v1/trips` creates the ride and `PATCH /v1/trips/{id}/status` handles assignment, start, and completion. Trip checks availability through `GET /internal/drivers/{id}/dispatch-profile`. The gateway sends `GET /v1/payments/{tripID}` to Payment for the `simulated_paid` receipt.*
 
-`GET /health` checks process liveness. `GET /ready` checks the backend HTTP services and their MongoDB connections. A broker outage can delay receipts while the gateway stays ready. Inspect trip and payment logs, the `pending_payment` fields in MongoDB, and the RabbitMQ queue `mobix.payment.trip-completed.v1` and its `.dead` counterpart when investigating a backlog.
+`GET /health` checks process liveness. `GET /ready` checks the backend HTTP services and their MongoDB connections. RabbitMQ or Redis outages do not make the gateway unready: the broker can delay receipts, while Redis applies the documented split failure policy. Inspect structured gateway logs for `rate limit backend unavailable`. Inspect trip and payment logs, the `pending_payment` fields in MongoDB, and the RabbitMQ queue `mobix.payment.trip-completed.v1` and its `.dead` counterpart when investigating a payment backlog.
 
 ## Kubernetes
 
@@ -121,7 +140,7 @@ For a local demo, build the four app images with Docker Compose and load them in
 
 ![Single-node kind deployment with Go services, MongoDB, RabbitMQ, and persistent storage](docs/screenshots/Mobix%20Kubernetes%20Architecture%20Diagram.png)
 
-*The local kind overlay runs four Go Deployments and gives MongoDB and RabbitMQ their own persistent volumes. Kustomize generates the Secret from `mobix-dependencies`, and the broker connection uses `RABBITMQ_URL`.*
+*The local kind overlay runs two gateway replicas, the three backend services, and an ephemeral Redis limiter. MongoDB and RabbitMQ retain their persistent volumes. Kustomize generates the Secret from `mobix-dependencies`.*
 
 ```sh
 docker compose build --provenance=false
@@ -147,11 +166,13 @@ For a deployment with external dependencies, use [the base manifests](deployment
 | --- | --- |
 | `internal-signing-key` | At least 32 bytes shared by the gateway and backend services for delegated identities |
 | `accounts-mongo-uri` | MongoDB connection string for the gateway account and session database |
+| `redis-url` | Redis or `rediss` connection URL shared by every gateway replica. Use a managed highly available Redis service outside the demo. |
+| `rate-limit-key` | Random value of at least 32 bytes used to HMAC rate-limit subjects |
 | `bootstrap-email`, `bootstrap-password` | First operator credentials. Use a unique password of 12 to 72 UTF-8 bytes. |
 | `trip-mongo-uri`, `driver-mongo-uri`, `payment-mongo-uri` | MongoDB connection strings. Give each service access to its own collections and required index operations. |
 | `trip-rabbitmq-url`, `payment-rabbitmq-url` | AMQP connection strings scoped to the Mobix queues and their declaration permissions. |
 
-The gateway Service is cluster-local. The internal HTTP ingress policies require a CNI that enforces NetworkPolicy. Use TLS and an identity-aware ingress for shared environments. The demo uses single-node infrastructure and development credentials. Its MongoDB container lets glibc own rseq for compatibility with affected Linux kernels. The demo includes automatic and operator-driven dispatch with simulated payments. Use unique operator credentials and a random internal signing key in shared deployments. [MongoDB container compatibility notes](https://github.com/docker-library/mongo/issues/765)
+The gateway Service is cluster-local. The internal HTTP and Redis ingress policies require a CNI that enforces NetworkPolicy. Use TLS and an identity-aware ingress for shared environments, configure its CIDRs as trusted proxies, and use encrypted `rediss://` connections when Redis leaves the cluster. The demo uses a single Redis pod without persistence; production should use managed replication and failover. The demo also uses single-node infrastructure and development credentials. Its MongoDB container lets glibc own rseq for compatibility with affected Linux kernels. Use unique operator credentials and independent random internal-signing and rate-limit keys in shared deployments. [MongoDB container compatibility notes](https://github.com/docker-library/mongo/issues/765)
 
 ## Upgrading from the operator demo
 
@@ -171,11 +192,12 @@ make build       # compile the four services
 make test-unit   # tests without Docker
 make test        # race detector and MongoDB Testcontainers tests
 make dispatch-demo # automatic offer expiry, next-batch acceptance, and receipt
+make rate-limit-demo # 429 headers and Redis outage behavior
 make verify        # HTTP authorization, concurrent assignment, and broker recovery
 make k8s-render  # render the local Kubernetes overlay
 ```
 
-Run `make verify` against a local test stack. It stops and restarts RabbitMQ and restarts the trip service while a payment event is pending. The verification script provisions two riders and two drivers, checks cross-account access and role permissions, and confirms recovery after a broker outage. GitHub Actions runs Go authorization and dispatch race tests against MongoDB, both Compose demos, the outage test, and Kustomize rendering on pull requests.
+Run `make verify` against a local test stack. It stops and restarts RabbitMQ and restarts the trip service while a payment event is pending. The verification script provisions two riders and two drivers, checks cross-account access and role permissions, and confirms recovery after a broker outage. The Redis integration test alternates requests between two independent HTTP gateway replicas and proves they consume one shared quota. GitHub Actions runs that test with the Go authorization and dispatch race suites, all Compose demos, both outage checks, and Kustomize rendering on pull requests.
 
 ## Roadmap
 

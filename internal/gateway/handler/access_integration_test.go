@@ -116,7 +116,7 @@ func TestAuthenticatedRideAccess(t *testing.T) {
 	payment := httptest.NewServer(delegation.Protect("payment", paymentMux))
 	t.Cleanup(payment.Close)
 	entry := httptest.NewServer(gateway.New(accessURL(t, trip.URL), accessURL(t, driver.URL), accessURL(t, payment.URL),
-		accountService, delegation, ready))
+		accountService, delegation, nil, ready))
 	t.Cleanup(entry.Close)
 	httpClient := &http.Client{Timeout: 10 * time.Second}
 	call := func(token, method, path string, body any, want int, headers http.Header) []byte {

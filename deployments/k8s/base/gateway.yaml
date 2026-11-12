@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: gateway
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app.kubernetes.io/name: gateway
@@ -46,6 +46,18 @@ spec:
                 secretKeyRef:
                   name: mobix-dependencies
                   key: accounts-mongo-uri
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: mobix-dependencies
+                  key: redis-url
+            - name: RATE_LIMIT_KEY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: mobix-dependencies
+                  key: rate-limit-key
+            - name: TRUSTED_PROXY_CIDRS
+              value: ""
             - name: MOBIX_BOOTSTRAP_EMAIL
               valueFrom:
                 secretKeyRef:

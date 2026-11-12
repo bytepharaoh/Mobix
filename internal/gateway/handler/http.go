@@ -9,12 +9,13 @@ import (
 	"time"
 
 	"github.com/bytepharaoh/Mobix/internal/accounts"
+	"github.com/bytepharaoh/Mobix/internal/gateway/ratelimit"
 	"github.com/bytepharaoh/Mobix/pkg/authn"
 	apperrors "github.com/bytepharaoh/Mobix/pkg/errors"
 	"github.com/bytepharaoh/Mobix/pkg/httpapi"
 )
 
-func New(trip, driver, payment *url.URL, auth *accounts.Service, delegation authn.Delegation, databaseReady func(context.Context) error) http.Handler {
+func New(trip, driver, payment *url.URL, auth *accounts.Service, delegation authn.Delegation, limits *ratelimit.Limiter, databaseReady func(context.Context) error) http.Handler {
 	client := &http.Client{Timeout: 1500 * time.Millisecond}
 	mux := httpapi.Mux("gateway", func(ctx context.Context) error {
 		if err := databaseReady(ctx); err != nil {
@@ -37,7 +38,7 @@ func New(trip, driver, payment *url.URL, auth *accounts.Service, delegation auth
 		return nil
 	})
 
-	register := func(audience string, upstream *url.URL, routes ...string) {
+	register := func(audience string, upstream *url.URL, operation ratelimit.Operation, routes ...string) {
 		proxy := &httputil.ReverseProxy{
 			Rewrite: func(r *httputil.ProxyRequest) {
 				r.SetURL(upstream)
@@ -50,18 +51,26 @@ func New(trip, driver, payment *url.URL, auth *accounts.Service, delegation auth
 			},
 		}
 		for _, route := range routes {
-			mux.Handle(route, auth.Require(proxy))
+			var endpoint http.Handler = proxy
+			if operation != "" {
+				endpoint = limits.Account(operation, endpoint)
+			}
+			mux.Handle(route, auth.Require(endpoint))
 		}
 	}
-	register("driver", driver, "POST /v1/drivers", "GET /v1/drivers/me", "GET /v1/drivers/{id}",
-		"PATCH /v1/drivers/{id}/availability", "PATCH /v1/drivers/{id}/location")
-	register("trip", trip, "GET /v1/drivers/{id}/activity", "POST /v1/trips", "GET /v1/trips/{id}", "PATCH /v1/trips/{id}/status",
-		"GET /v1/drivers/me/offers", "POST /v1/trips/{id}/offers/{offerID}/accept", "POST /v1/trips/{id}/offers/{offerID}/decline")
-	register("payment", payment, "GET /v1/payments/{tripID}")
+	register("driver", driver, "", "POST /v1/drivers", "GET /v1/drivers/me", "GET /v1/drivers/{id}",
+		"PATCH /v1/drivers/{id}/availability")
+	register("driver", driver, ratelimit.Location, "PATCH /v1/drivers/{id}/location")
+	register("trip", trip, "", "GET /v1/drivers/{id}/activity", "GET /v1/trips/{id}", "PATCH /v1/trips/{id}/status")
+	register("trip", trip, ratelimit.RideRequest, "POST /v1/trips")
+	register("trip", trip, ratelimit.OfferPoll, "GET /v1/drivers/me/offers")
+	register("trip", trip, ratelimit.OfferResponse,
+		"POST /v1/trips/{id}/offers/{offerID}/accept", "POST /v1/trips/{id}/offers/{offerID}/decline")
+	register("payment", payment, "", "GET /v1/payments/{tripID}")
 	mux.HandleFunc("/v1/", func(w http.ResponseWriter, r *http.Request) {
 		httpapi.Error(w, apperrors.ErrNotFound)
 	})
-	auth.RegisterHTTP(mux)
+	auth.RegisterHTTPWithLoginMiddleware(mux, limits.Login)
 	RegisterDocs(mux)
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

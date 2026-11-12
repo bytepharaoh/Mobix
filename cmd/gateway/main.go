@@ -6,6 +6,7 @@ import (
 
 	"github.com/bytepharaoh/Mobix/internal/accounts"
 	"github.com/bytepharaoh/Mobix/internal/gateway/handler"
+	"github.com/bytepharaoh/Mobix/internal/gateway/ratelimit"
 	"github.com/bytepharaoh/Mobix/pkg/authn"
 	"github.com/bytepharaoh/Mobix/pkg/config"
 	"github.com/bytepharaoh/Mobix/pkg/httpapi"
@@ -47,6 +48,19 @@ func run(ctx context.Context) error {
 	if err := auth.Bootstrap(ctx, config.GetString("MOBIX_BOOTSTRAP_EMAIL", ""), config.GetString("MOBIX_BOOTSTRAP_PASSWORD", "")); err != nil {
 		return err
 	}
+	limitConfig, err := ratelimit.LoadConfig()
+	if err != nil {
+		return fmt.Errorf("rate limit configuration: %w", err)
+	}
+	limitBackend, err := ratelimit.OpenRedis(limitConfig.RedisURL)
+	if err != nil {
+		return err
+	}
+	defer limitBackend.Close()
+	limits, err := ratelimit.New(limitBackend, limitConfig)
+	if err != nil {
+		return fmt.Errorf("initialize rate limiter: %w", err)
+	}
 	ready := func(ctx context.Context) error { return database.Client().Ping(ctx, nil) }
-	return httpapi.Run(ctx, config.GetString("GATEWAY_PORT", "8080"), handler.New(trip, driver, payment, auth, delegation, ready))
+	return httpapi.Run(ctx, config.GetString("GATEWAY_PORT", "8080"), handler.New(trip, driver, payment, auth, delegation, limits, ready))
 }
