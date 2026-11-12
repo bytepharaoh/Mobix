@@ -55,6 +55,10 @@ func (r *MongoRepository) EnsureIndexes(ctx context.Context) error {
 			Keys:    bson.D{{Key: "pending_payment.occurred_at", Value: 1}},
 			Options: options.Index().SetName("pending_payments").SetSparse(true),
 		},
+		{
+			Keys:    bson.D{{Key: "pending_ride_events.occurred_at", Value: 1}},
+			Options: options.Index().SetName("pending_ride_events").SetSparse(true),
+		},
 	})
 	return err
 }
@@ -63,6 +67,10 @@ func (r *MongoRepository) Create(ctx context.Context, trip *domain.Trip) (*domai
 	trip.ID = bson.NewObjectID()
 	trip.CreatedAt = time.Now().UTC().Truncate(time.Millisecond)
 	trip.UpdatedAt = trip.CreatedAt
+	trip.Version = 1
+	trip.PendingRideEvents = append(trip.PendingRideEvents,
+		newRideEvent(trip, trip.Version, messaging.RideTripCreated, trip.Status,
+			trip.DriverAccountID, activeOfferAccounts(trip.Dispatch), trip.CreatedAt))
 	_, err := r.collection.InsertOne(ctx, trip)
 	if err == nil {
 		return trip, nil
@@ -100,7 +108,9 @@ func (r *MongoRepository) Transition(ctx context.Context, id string, expected *d
 	if err != nil {
 		return nil, apperrors.ErrInvalidInput
 	}
-	fields := bson.M{"status": change.Status, "updated_at": time.Now().UTC()}
+	changedAt := time.Now().UTC().Truncate(time.Millisecond)
+	nextVersion := expected.Version + 1
+	fields := bson.M{"status": change.Status, "updated_at": changedAt, "version": nextVersion}
 	if change.DriverID != "" {
 		fields["driver_id"] = change.DriverID
 		fields["driver_account_id"] = change.DriverAccountID
@@ -111,13 +121,29 @@ func (r *MongoRepository) Transition(ctx context.Context, id string, expected *d
 		fields["currency"] = payment.Currency
 	}
 	var updated domain.Trip
-	err = r.collection.FindOneAndUpdate(ctx,
+	filter := bson.M{
+		"_id": objectID, "status": expected.Status,
+		"rider_account_id":  storedAccount(expected.RiderAccountID),
+		"driver_account_id": storedAccount(expected.DriverAccountID),
+	}
+	if expected.Version > 0 {
+		filter["version"] = expected.Version
+	} else {
+		filter["$or"] = bson.A{bson.M{"version": 0}, bson.M{"version": bson.M{"$exists": false}}}
+	}
+	driverAccountID := expected.DriverAccountID
+	if change.DriverAccountID != "" {
+		driverAccountID = change.DriverAccountID
+	}
+	eventTrip := *expected
+	eventTrip.ID = objectID
+	event := newRideEvent(&eventTrip, nextVersion, messaging.RideTripStatusChanged, change.Status,
+		driverAccountID, activeOfferAccounts(expected.Dispatch), changedAt)
+	err = r.collection.FindOneAndUpdate(ctx, filter,
 		bson.M{
-			"_id": objectID, "status": expected.Status,
-			"rider_account_id":  storedAccount(expected.RiderAccountID),
-			"driver_account_id": storedAccount(expected.DriverAccountID),
+			"$set": fields, "$unset": bson.M{"dispatch.next_attempt_at": ""},
+			"$push": bson.M{"pending_ride_events": event},
 		},
-		bson.M{"$set": fields, "$unset": bson.M{"dispatch.next_attempt_at": ""}},
 		options.FindOneAndUpdate().SetReturnDocument(options.After),
 	).Decode(&updated)
 	switch {
@@ -159,6 +185,32 @@ func (r *MongoRepository) MarkPaymentPublished(ctx context.Context, event messag
 	}
 	_, err = r.collection.UpdateOne(ctx, bson.M{"_id": id, "pending_payment.id": event.ID},
 		bson.M{"$unset": bson.M{"pending_payment": ""}})
+	return err
+}
+
+func (r *MongoRepository) NextRideEvent(ctx context.Context) (*messaging.RideEvent, error) {
+	var trip domain.Trip
+	err := r.collection.FindOne(ctx, bson.M{"pending_ride_events.0": bson.M{"$exists": true}},
+		options.FindOne().SetSort(bson.D{{Key: "pending_ride_events.occurred_at", Value: 1}})).Decode(&trip)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if len(trip.PendingRideEvents) == 0 {
+		return nil, nil
+	}
+	return &trip.PendingRideEvents[0], nil
+}
+
+func (r *MongoRepository) MarkRideEventPublished(ctx context.Context, event messaging.RideEvent) error {
+	id, err := bson.ObjectIDFromHex(event.TripID)
+	if err != nil {
+		return err
+	}
+	_, err = r.collection.UpdateOne(ctx, bson.M{"_id": id},
+		bson.M{"$pull": bson.M{"pending_ride_events": bson.M{"id": event.ID}}})
 	return err
 }
 

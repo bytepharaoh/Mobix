@@ -48,12 +48,16 @@ func (s *Service) sweep(ctx context.Context) {
 }
 
 func (s *Service) advance(ctx context.Context, trip domain.Trip) error {
-	next := *trip.Dispatch
+	next := trip.Dispatch.Clone()
 	now := time.Now().UTC()
 	limit := min(s.config.BatchSize, maxOffersPerTrip-len(next.Offers))
 	if !now.Before(next.Deadline) || limit <= 0 {
 		next.NextAttemptAt = time.Time{}
-		return s.store.SaveDispatch(ctx, trip.ID, next, false)
+		next.BatchExpiresAt = time.Time{}
+		return s.store.SaveDispatch(ctx, &trip, next, false)
+	}
+	if !next.BatchExpiresAt.IsZero() && !next.BatchExpiresAt.After(now) {
+		next.BatchExpiresAt = time.Time{}
 	}
 	searchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -73,7 +77,7 @@ func (s *Service) advance(ctx context.Context, trip domain.Trip) error {
 			})
 		}
 	}
-	if err := s.store.SaveDispatch(ctx, trip.ID, next, false); err != nil {
+	if err := s.store.SaveDispatch(ctx, &trip, next, false); err != nil {
 		return err
 	}
 	return searchErr

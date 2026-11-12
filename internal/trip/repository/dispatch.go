@@ -8,6 +8,7 @@ import (
 
 	"github.com/bytepharaoh/Mobix/internal/trip/domain"
 	apperrors "github.com/bytepharaoh/Mobix/pkg/errors"
+	"github.com/bytepharaoh/Mobix/pkg/messaging"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -50,9 +51,14 @@ func (r *MongoRepository) ActiveDrivers(ctx context.Context, driverIDs []string)
 
 // SaveDispatch compares the revision shared by the matcher and declining drivers.
 // The database clock decides whether a batch is still open or due to advance.
-func (r *MongoRepository) SaveDispatch(ctx context.Context, tripID bson.ObjectID, next domain.Dispatch, decline bool) error {
+func (r *MongoRepository) SaveDispatch(ctx context.Context, trip *domain.Trip, next domain.Dispatch, decline bool) error {
 	filter := bson.M{
-		"_id": tripID, "status": domain.StatusRequested, "dispatch.revision": next.Revision,
+		"_id": trip.ID, "status": domain.StatusRequested, "dispatch.revision": next.Revision,
+	}
+	if trip.Version > 0 {
+		filter["version"] = trip.Version
+	} else {
+		filter["$or"] = bson.A{bson.M{"version": 0}, bson.M{"version": bson.M{"$exists": false}}}
 	}
 	if decline {
 		filter["$expr"] = bson.M{"$gt": bson.A{"$dispatch.batch_expires_at", "$$NOW"}}
@@ -61,7 +67,12 @@ func (r *MongoRepository) SaveDispatch(ctx context.Context, tripID bson.ObjectID
 		filter["$expr"] = bson.M{"$lte": bson.A{"$dispatch.next_attempt_at", "$$NOW"}}
 	}
 	next.Revision++
-	result, err := r.collection.UpdateOne(ctx, filter, bson.M{"$set": bson.M{"dispatch": next}})
+	update := bson.M{"$set": bson.M{"dispatch": next}}
+	if event, visible := dispatchEvent(trip, next, time.Now()); visible {
+		update["$set"].(bson.M)["version"] = event.Version
+		update["$push"] = bson.M{"pending_ride_events": event}
+	}
+	result, err := r.collection.UpdateOne(ctx, filter, update)
 	if err != nil {
 		return fmt.Errorf("save dispatch: %w", err)
 	}
@@ -101,9 +112,9 @@ func (r *MongoRepository) OfferInbox(ctx context.Context, accountID string, now 
 	return offers, cursor.Err()
 }
 
-func (r *MongoRepository) AcceptOffer(ctx context.Context, tripID bson.ObjectID, offer domain.Offer) (*domain.Trip, error) {
+func (r *MongoRepository) AcceptOffer(ctx context.Context, trip *domain.Trip, offer domain.Offer) (*domain.Trip, error) {
 	filter := bson.M{
-		"_id": tripID, "status": domain.StatusRequested,
+		"_id": trip.ID, "status": domain.StatusRequested,
 		"dispatch.batch_expires_at": offer.ExpiresAt,
 		"$expr":                     bson.M{"$gt": bson.A{"$dispatch.batch_expires_at", "$$NOW"}},
 		"dispatch.offers": bson.M{"$elemMatch": bson.M{
@@ -111,13 +122,23 @@ func (r *MongoRepository) AcceptOffer(ctx context.Context, tripID bson.ObjectID,
 			"expires_at": offer.ExpiresAt, "declined": false,
 		}},
 	}
+	if trip.Version > 0 {
+		filter["version"] = trip.Version
+	} else {
+		filter["$or"] = bson.A{bson.M{"version": 0}, bson.M{"version": bson.M{"$exists": false}}}
+	}
+	changedAt := time.Now().UTC().Truncate(time.Millisecond)
+	nextVersion := trip.Version + 1
+	event := newRideEvent(trip, nextVersion, messaging.RideTripStatusChanged, domain.StatusAssigned,
+		offer.AccountID, activeOfferAccounts(trip.Dispatch), changedAt)
 	var assigned domain.Trip
 	err := r.collection.FindOneAndUpdate(ctx, filter, bson.M{
 		"$set": bson.M{
 			"status": domain.StatusAssigned, "driver_id": offer.DriverID, "driver_account_id": offer.AccountID,
-			"dispatch.accepted_offer_id": offer.ID, "updated_at": time.Now().UTC(),
+			"dispatch.accepted_offer_id": offer.ID, "updated_at": changedAt, "version": nextVersion,
 		},
 		"$unset": bson.M{"dispatch.next_attempt_at": ""},
+		"$push":  bson.M{"pending_ride_events": event},
 	}, options.FindOneAndUpdate().SetReturnDocument(options.After)).Decode(&assigned)
 	switch {
 	case mongo.IsDuplicateKeyError(err):

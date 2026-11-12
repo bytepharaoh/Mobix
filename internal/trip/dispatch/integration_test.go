@@ -205,7 +205,7 @@ func TestBatchedDispatch(t *testing.T) {
 			t.Fatal(err)
 		}
 		first[0].ExpiresAt = expired
-		if _, err := f.trips.AcceptOffer(f.ctx, trip.ID, first[0]); !errors.Is(err, apperrors.ErrConflict) {
+		if _, err := f.trips.AcceptOffer(f.ctx, f.read(t, trip.ID), first[0]); !errors.Is(err, apperrors.ErrConflict) {
 			t.Fatalf("MongoDB accepted an expired offer: %v", err)
 		}
 		f.matcher.sweep(f.ctx)

@@ -41,3 +41,12 @@ func NewDispatch(now time.Time) *Dispatch {
 	now = now.UTC().Truncate(time.Millisecond)
 	return &Dispatch{Deadline: now.Add(MatchingWindow), NextAttemptAt: now}
 }
+
+func (dispatch *Dispatch) Clone() Dispatch {
+	if dispatch == nil {
+		return Dispatch{}
+	}
+	clone := *dispatch
+	clone.Offers = append([]Offer(nil), dispatch.Offers...)
+	return clone
+}

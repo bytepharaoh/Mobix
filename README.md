@@ -1,6 +1,6 @@
 # Mobix
 
-Mobix is a Go backend for a ride-sharing workflow with individual rider, driver, and operator accounts. Register a driver, request a ride, and follow it from nearby driver offers through completion. Redis enforces distributed gateway quotas, and RabbitMQ delivers completed rides to the payment service, which records a simulated receipt.
+Mobix is a Go backend for a ride-sharing workflow with individual rider, driver, and operator accounts. Register a driver, request a ride, and follow it from nearby driver offers through completion. Redis enforces distributed gateway quotas. RabbitMQ carries versioned ride notifications and delivers completed rides to the payment service, which records a simulated receipt.
 
 ## Quick start
 
@@ -108,6 +108,14 @@ Matching runs for up to two minutes with a maximum of 200 offers per trip. Trips
 
 Run `make dispatch-demo` on the local demo stack with the default batch size. The script seeds four drivers near a test pickup and leaves them offline after the run.
 
+## Versioned ride events
+
+Every client-visible trip or offer change advances the trip's monotonic `version`. The same MongoDB write appends a stable event such as `trip.created`, `offers.updated`, `trip.status_changed`, or `matching.exhausted` to that trip's outbox. This keeps the canonical trip state and its notification inseparable, without requiring a distributed transaction.
+
+The trip worker publishes these notifications to the durable `mobix.ride.events.v1` topic exchange using the event type as the routing key. It removes an outbox entry only after RabbitMQ confirms the mandatory, persistent publish. A reconnect can therefore publish a message more than once, but the stable `ride-event:<trip-id>:<version>` ID and monotonic version make downstream deduplication deterministic. Events contain audience account IDs, status, and version—not pickup or drop-off coordinates or a duplicate copy of trip state.
+
+The current foundation binds a bounded diagnostic queue, `mobix.realtime.ride-events.v1.buffer`, to the exchange. It retains at most 10,000 notifications for up to 10 minutes. The upcoming streaming delivery adds authorized per-replica consumers and uses each event as an invalidation hint: clients first receive the current trip snapshot, then apply only newer versions and can safely fetch the snapshot again after reconnecting.
+
 ## Screenshots
 
 The original operator demo’s API explorer and simulated receipt. The current explorer opens on the sign-in form.
@@ -118,21 +126,21 @@ The original operator demo’s API explorer and simulated receipt. The current e
 
 ## How the services work together
 
-The **gateway** exposes the HTTP API and shares rate-limit state through Redis. **Driver** manages registration, declared availability and location. **Trip** owns dispatch, the fare estimate, the state machine and driver activity derived from trip history. **Payment** consumes completion events and writes receipts to its own MongoDB database.
+The **gateway** exposes the HTTP API and shares rate-limit state through Redis. **Driver** manages registration, declared availability and location. **Trip** owns dispatch, the fare estimate, the state machine, versioned ride notifications, and driver activity derived from trip history. **Payment** consumes completion events and writes receipts to its own MongoDB database.
 
 ![Mobix service architecture showing HTTP calls, RabbitMQ events, and MongoDB access](docs/screenshots/Mobix%20Service%20Architecture%20Diagram.png)
 
-*The gateway authenticates account sessions and delegates signed identities to the services over HTTP. RabbitMQ carries trip completion events to the payment service. The driver records shown in the diagram live in the `driver` collection.*
+*The gateway authenticates account sessions and delegates signed identities to the services over HTTP. RabbitMQ carries trip completion events to Payment and versioned ride-change notifications for real-time delivery. The driver records shown in the diagram live in the `driver` collection.*
 
 Trip state changes use a conditional MongoDB update. A partial unique index allows a driver to appear on one assigned or in-progress trip at a time. The driver service supplies the availability snapshot used during dispatch. Going offline opts out of future dispatch checks while an existing assignment remains active. Fare estimates use straight-line distance, a $3.50 base fare, and $1.20 per kilometer, rounded to cents.
 
-Completing a trip writes its payment event into the trip document atomically. The publisher removes the pending event after RabbitMQ confirms delivery to the durable queue. During a broker outage the event stays in MongoDB, including across trip-service restarts. Delivery is at least once, and MongoDB enforces one receipt per trip. The consumer acknowledges after recording a receipt and sends malformed messages to the dead-letter queue.
+Completing a trip writes its payment event into the trip document atomically. Every visible ride change uses the same outbox pattern for its versioned notification. A publisher removes a pending event only after RabbitMQ confirms routing. During a broker outage events stay in MongoDB, including across trip-service restarts. Delivery is at least once; stable ride-event IDs support deduplication, and MongoDB enforces one receipt per trip. The payment consumer acknowledges after recording a receipt and sends malformed messages to the dead-letter queue.
 
 ![Illustrated sequence from ride request through asynchronous payment processing](docs/screenshots/Ride%20Request%20to%20Payment%20Receipt%20Flow.png)
 
 *The sequence uses illustrative endpoint labels. In Mobix, `POST /v1/trips` creates the ride and `PATCH /v1/trips/{id}/status` handles assignment, start, and completion. Trip checks availability through `GET /internal/drivers/{id}/dispatch-profile`. The gateway sends `GET /v1/payments/{tripID}` to Payment for the `simulated_paid` receipt.*
 
-`GET /health` checks process liveness. `GET /ready` checks the backend HTTP services and their MongoDB connections. RabbitMQ or Redis outages do not make the gateway unready: the broker can delay receipts, while Redis applies the documented split failure policy. Inspect structured gateway logs for `rate limit backend unavailable`. Inspect trip and payment logs, the `pending_payment` fields in MongoDB, and the RabbitMQ queue `mobix.payment.trip-completed.v1` and its `.dead` counterpart when investigating a payment backlog.
+`GET /health` checks process liveness. `GET /ready` checks the backend HTTP services and their MongoDB connections. RabbitMQ or Redis outages do not make the gateway unready: the broker can delay receipts and ride notifications, while Redis applies the documented split failure policy. Inspect structured gateway logs for `rate limit backend unavailable`. Inspect trip and payment logs, `pending_payment` and `pending_ride_events` in MongoDB, and the RabbitMQ queues `mobix.payment.trip-completed.v1`, its `.dead` counterpart, and `mobix.realtime.ride-events.v1.buffer` when investigating a backlog.
 
 ## Kubernetes
 
@@ -190,7 +198,7 @@ Use Go 1.27.2 to match the container builder and GitHub Actions.
 make check       # formatting and vet
 make build       # compile the four services
 make test-unit   # tests without Docker
-make test        # race detector and MongoDB Testcontainers tests
+make test        # race detector and MongoDB, Redis, and RabbitMQ Testcontainers tests
 make dispatch-demo # automatic offer expiry, next-batch acceptance, and receipt
 make rate-limit-demo # 429 headers and Redis outage behavior
 make verify        # HTTP authorization, concurrent assignment, and broker recovery

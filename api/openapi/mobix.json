@@ -1753,6 +1753,7 @@
           "dropoff",
           "status",
           "fare_cents",
+          "version",
           "currency",
           "created_at",
           "updated_at"
@@ -1790,6 +1791,12 @@
             "type": "integer",
             "format": "int64",
             "minimum": 0
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Monotonic revision of client-visible trip state. Legacy trips start at zero."
           },
           "currency": {
             "type": "string",

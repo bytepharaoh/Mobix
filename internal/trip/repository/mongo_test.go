@@ -251,7 +251,14 @@ func TestUpdateStatus(t *testing.T) {
 			defer cleanup()
 
 			id := tt.setup(repo)
-			_, err := repo.Transition(context.Background(), id, &domain.Trip{Status: domain.StatusRequested}, domain.Transition{Status: tt.newStatus, DriverID: bson.NewObjectID().Hex()})
+			expected, findErr := repo.FindByID(context.Background(), id)
+			if findErr != nil && !tt.wantErr {
+				t.Fatal(findErr)
+			}
+			if expected == nil {
+				expected = &domain.Trip{Status: domain.StatusRequested}
+			}
+			_, err := repo.Transition(context.Background(), id, expected, domain.Transition{Status: tt.newStatus, DriverID: bson.NewObjectID().Hex()})
 
 			if tt.wantErr {
 				if err == nil {

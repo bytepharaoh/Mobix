@@ -21,8 +21,16 @@ type Outbox interface {
 	MarkPaymentPublished(context.Context, TripCompleted) error
 }
 
+type RideOutbox interface {
+	NextRideEvent(context.Context) (*RideEvent, error)
+	MarkRideEventPublished(context.Context, RideEvent) error
+}
+
 func RunPublisher(ctx context.Context, uri string, outbox Outbox) {
 	run(ctx, uri, "publisher", func(ch *amqp.Channel) error {
+		if err := declarePaymentTopology(ch); err != nil {
+			return err
+		}
 		if err := ch.Confirm(false); err != nil {
 			return err
 		}
@@ -43,7 +51,7 @@ func RunPublisher(ctx context.Context, uri string, outbox Outbox) {
 					continue
 				}
 			}
-			if err := publish(ctx, ch, returns, *event); err != nil {
+			if err := publishPayment(ctx, ch, returns, *event); err != nil {
 				return err
 			}
 			if err := outbox.MarkPaymentPublished(ctx, *event); err != nil {
@@ -54,18 +62,69 @@ func RunPublisher(ctx context.Context, uri string, outbox Outbox) {
 	})
 }
 
-func publish(ctx context.Context, ch *amqp.Channel, returns <-chan amqp.Return, event TripCompleted) error {
+func RunRidePublisher(ctx context.Context, uri string, outbox RideOutbox) {
+	run(ctx, uri, "ride-event-publisher", func(ch *amqp.Channel) error {
+		if err := declareRideTopology(ch); err != nil {
+			return err
+		}
+		if err := ch.Confirm(false); err != nil {
+			return err
+		}
+		returns := ch.NotifyReturn(make(chan amqp.Return, 1))
+		closed := ch.NotifyClose(make(chan *amqp.Error, 1))
+		for ctx.Err() == nil {
+			event, err := outbox.NextRideEvent(ctx)
+			if err != nil {
+				return fmt.Errorf("read ride event outbox: %w", err)
+			}
+			if event == nil {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-closed:
+					return errors.New("ride event publisher channel closed")
+				case <-time.After(300 * time.Millisecond):
+					continue
+				}
+			}
+			if err := publishRideEvent(ctx, ch, returns, *event); err != nil {
+				return err
+			}
+			if err := outbox.MarkRideEventPublished(ctx, *event); err != nil {
+				return fmt.Errorf("mark ride event published: %w", err)
+			}
+		}
+		return ctx.Err()
+	})
+}
+
+func publishPayment(ctx context.Context, ch *amqp.Channel, returns <-chan amqp.Return, event TripCompleted) error {
 	body, err := json.Marshal(event)
 	if err != nil {
 		return err
 	}
+	return publishConfirmed(ctx, ch, returns, "", CompletedQueue, CompletedKind, event.ID, event.OccurredAt, body)
+}
+
+func publishRideEvent(ctx context.Context, ch *amqp.Channel, returns <-chan amqp.Return, event RideEvent) error {
+	body, err := json.Marshal(event)
+	if err != nil {
+		return err
+	}
+	return publishConfirmed(ctx, ch, returns, RideExchange, string(event.Type), RideEventKind, event.ID, event.OccurredAt, body)
+}
+
+func publishConfirmed(ctx context.Context, ch *amqp.Channel, returns <-chan amqp.Return,
+	exchange, routingKey, eventType, messageID string, occurredAt time.Time, body []byte,
+) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	confirmation, err := ch.PublishWithDeferredConfirmWithContext(ctx, "", CompletedQueue, true, false, amqp.Publishing{
+	confirmation, err := ch.PublishWithDeferredConfirmWithContext(ctx, exchange, routingKey, true, false, amqp.Publishing{
 		ContentType:  "application/json",
 		DeliveryMode: amqp.Persistent,
-		Type:         CompletedKind,
-		MessageId:    event.ID,
+		Type:         eventType,
+		MessageId:    messageID,
+		Timestamp:    occurredAt,
 		Body:         body,
 	})
 	if err != nil {
@@ -89,6 +148,9 @@ func publish(ctx context.Context, ch *amqp.Channel, returns <-chan amqp.Return, 
 
 func RunConsumer(ctx context.Context, uri string, handle func(context.Context, TripCompleted) error) {
 	run(ctx, uri, "consumer", func(ch *amqp.Channel) error {
+		if err := declarePaymentTopology(ch); err != nil {
+			return err
+		}
 		if err := ch.Qos(1, 0, false); err != nil {
 			return err
 		}
@@ -178,6 +240,11 @@ func connect(ctx context.Context, uri string, work func(*amqp.Channel) error) er
 	if err != nil {
 		return err
 	}
+	defer channel.Close()
+	return work(channel)
+}
+
+func declarePaymentTopology(channel *amqp.Channel) error {
 	if _, err := channel.QueueDeclare(deadLetterQueue, true, false, false, false, nil); err != nil {
 		return err
 	}
@@ -186,5 +253,19 @@ func connect(ctx context.Context, uri string, work func(*amqp.Channel) error) er
 	}); err != nil {
 		return err
 	}
-	return work(channel)
+	return nil
+}
+
+func declareRideTopology(channel *amqp.Channel) error {
+	if err := channel.ExchangeDeclare(RideExchange, "topic", true, false, false, false, nil); err != nil {
+		return err
+	}
+	if _, err := channel.QueueDeclare(RideBufferQueue, true, false, false, false, amqp.Table{
+		"x-message-ttl": int32((10 * time.Minute) / time.Millisecond),
+		"x-max-length":  int32(10_000),
+		"x-overflow":    "drop-head",
+	}); err != nil {
+		return err
+	}
+	return channel.QueueBind(RideBufferQueue, "#", RideExchange, false, nil)
 }
