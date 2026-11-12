@@ -39,6 +39,7 @@ jobs:
       MOBIX_INTERNAL_KEY: mobix-ci-internal-signing-key-for-isolated-tests
       MOBIX_BOOTSTRAP_EMAIL: operator@mobix.test
       MOBIX_BOOTSTRAP_PASSWORD: mobix-ci-operator-password
+      RATE_LIMIT_LOGIN_IP: 1000/1m
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-kubectl@v4
@@ -52,6 +53,7 @@ jobs:
       - run: make up
       - run: make demo
       - run: make dispatch-demo
+      - run: make rate-limit-demo
       - run: make verify
       - name: Print service logs on failure
         if: failure()

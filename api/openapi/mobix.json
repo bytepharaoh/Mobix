@@ -76,14 +76,17 @@
             }
           },
           "429": {
-            "description": "Authentication hashing capacity is busy. Retry shortly.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
+			"$ref": "#/components/responses/RateLimited"
+		  },
+		  "503": {
+			"description": "Redis is unavailable, so login protection cannot be enforced",
+			"content": {
+			  "application/json": {
+				"schema": {
+				  "$ref": "#/components/schemas/Error"
+				}
+			  }
+			}
           },
           "500": {
             "description": "Internal error",
@@ -729,6 +732,9 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
           }
         },
         "parameters": [
@@ -929,6 +935,9 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
           }
         },
         "requestBody": {
@@ -1373,6 +1382,9 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
           }
         }
       }
@@ -1455,6 +1467,9 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
           }
         },
         "parameters": [
@@ -1550,6 +1565,9 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
           }
         },
         "parameters": [
@@ -2064,6 +2082,27 @@
           "expires_at": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      }
+    },
+    "responses": {
+      "RateLimited": {
+        "description": "The endpoint-specific account or IP quota, or bounded authentication capacity, is exhausted",
+        "headers": {
+          "Retry-After": {
+            "description": "Seconds until the token bucket can admit another request",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
           }
         }
       }
