@@ -19,8 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.27.2"
       - name: Verify dependency metadata
@@ -41,8 +41,8 @@ jobs:
       MOBIX_BOOTSTRAP_PASSWORD: mobix-ci-operator-password
       RATE_LIMIT_LOGIN_IP: 1000/1m
     steps:
-      - uses: actions/checkout@v4
-      - uses: azure/setup-kubectl@v4
+      - uses: actions/checkout@v7
+      - uses: azure/setup-kubectl@v5
         with:
           version: "v1.35.0"
       - name: Validate deployment configuration
