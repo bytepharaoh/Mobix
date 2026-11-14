@@ -43,7 +43,7 @@ services:
       context: .
       args: {SERVICE: gateway}
     environment:
-      <<: [*mongo-env, *identity-env, *rate-limit-env]
+      <<: [*mongo-env, *rabbit-env, *identity-env, *rate-limit-env]
       MONGO_DB: ${ACCOUNTS_MONGO_DB:-mobix_accounts}
       MOBIX_BOOTSTRAP_EMAIL: ${MOBIX_BOOTSTRAP_EMAIL:-}
       MOBIX_BOOTSTRAP_PASSWORD: ${MOBIX_BOOTSTRAP_PASSWORD:-}
@@ -57,6 +57,7 @@ services:
       driver: {condition: service_healthy}
       payment: {condition: service_healthy}
       redis: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
     healthcheck:
       <<: *health
       test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:8080/ready"]

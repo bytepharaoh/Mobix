@@ -83,7 +83,7 @@ func TestTwoGatewayReplicasShareLoginAccountQuota(t *testing.T) {
 	policies := make(map[ratelimit.Operation]ratelimit.Policy, 6)
 	for _, operation := range []ratelimit.Operation{
 		ratelimit.LoginIP, ratelimit.LoginAccount, ratelimit.RideRequest,
-		ratelimit.Location, ratelimit.OfferPoll, ratelimit.OfferResponse,
+		ratelimit.Location, ratelimit.OfferPoll, ratelimit.OfferResponse, ratelimit.EventStream,
 	} {
 		policies[operation] = ratelimit.Policy{Capacity: 100, Window: time.Minute}
 	}

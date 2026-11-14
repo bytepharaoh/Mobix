@@ -21,7 +21,7 @@ func (function backendFunc) Allow(ctx context.Context, key string, policy Policy
 
 func testConfig() Config {
 	policies := make(map[Operation]Policy, 6)
-	for _, operation := range []Operation{LoginIP, LoginAccount, RideRequest, Location, OfferPoll, OfferResponse} {
+	for _, operation := range []Operation{LoginIP, LoginAccount, RideRequest, Location, OfferPoll, OfferResponse, EventStream} {
 		policies[operation] = Policy{Capacity: 3, Window: time.Minute}
 	}
 	return Config{KeySecret: strings.Repeat("k", 32), Policies: policies}

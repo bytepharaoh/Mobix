@@ -1,7 +1,7 @@
 SHELL := /bin/sh
 SERVICES := gateway trip driver payment
 
-.PHONY: help up down docker-up docker-down logs build clean test test-unit test-repo demo dispatch-demo rate-limit-demo verify k8s-render fmt fmt-check vet check mock
+.PHONY: help up down docker-up docker-down logs build clean test test-unit test-repo demo dispatch-demo realtime-demo rate-limit-demo verify k8s-render fmt fmt-check vet check mock
 
 help:
 	@printf '%s\n' \
@@ -10,6 +10,7 @@ help:
 	  'make logs        Follow all service logs' \
 	  'make demo        Run a complete ride and print its payment receipt' \
 	  'make dispatch-demo  Run a ride through automatic driver offers' \
+	  'make realtime-demo  Verify an authenticated SSE trip stream' \
 	  'make rate-limit-demo  Verify enforcement and Redis outage behavior' \
 	  'make verify      Run HTTP acceptance and broker recovery checks' \
 	  'make build       Compile all four binaries into bin/' \
@@ -49,6 +50,9 @@ demo:
 
 dispatch-demo:
 	bash scripts/dispatch-demo.sh
+
+realtime-demo:
+	bash scripts/realtime-demo.sh
 
 rate-limit-demo:
 	bash scripts/rate-limit-demo.sh

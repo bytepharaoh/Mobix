@@ -53,6 +53,7 @@ jobs:
       - run: make up
       - run: make demo
       - run: make dispatch-demo
+      - run: make realtime-demo
       - run: make rate-limit-demo
       - run: make verify
       - name: Print service logs on failure

@@ -39,6 +39,11 @@ spec:
               value: "http://driver:8083"
             - name: PAYMENT_URL
               value: "http://payment:8084"
+            - name: RABBITMQ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: mobix-dependencies
+                  key: gateway-rabbitmq-url
             - name: MONGO_DB
               value: mobix_accounts
             - name: MONGO_URI
@@ -58,6 +63,10 @@ spec:
                   key: rate-limit-key
             - name: TRUSTED_PROXY_CIDRS
               value: ""
+            - name: SSE_MAX_CONNECTIONS
+              value: "1000"
+            - name: SSE_MAX_CONNECTIONS_PER_ACCOUNT
+              value: "5"
             - name: MOBIX_BOOTSTRAP_EMAIL
               valueFrom:
                 secretKeyRef:

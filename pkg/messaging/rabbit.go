@@ -98,6 +98,52 @@ func RunRidePublisher(ctx context.Context, uri string, outbox RideOutbox) {
 	})
 }
 
+// RunRideConsumer creates an exclusive queue for one gateway replica. Topic
+// exchanges route a copy to every replica queue, while the queue disappears
+// when that replica disconnects. onReady lets the gateway refresh connected
+// clients after every broker reconnection so missed notifications are harmless.
+func RunRideConsumer(ctx context.Context, uri string, onReady func(), handle func(RideEvent)) {
+	run(ctx, uri, "ride-event-consumer", func(ch *amqp.Channel) error {
+		if err := declareRideExchange(ch); err != nil {
+			return err
+		}
+		queue, err := ch.QueueDeclare("", false, true, true, false, amqp.Table{
+			"x-message-ttl": int32((time.Minute) / time.Millisecond),
+			"x-max-length":  int32(1_000),
+			"x-overflow":    "drop-head",
+		})
+		if err != nil {
+			return err
+		}
+		if err := ch.QueueBind(queue.Name, "#", RideExchange, false, nil); err != nil {
+			return err
+		}
+		if err := ch.Qos(100, 0, false); err != nil {
+			return err
+		}
+		deliveries, err := ch.ConsumeWithContext(ctx, queue.Name, "", false, true, false, false, nil)
+		if err != nil {
+			return err
+		}
+		if onReady != nil {
+			onReady()
+		}
+		for {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case delivery, ok := <-deliveries:
+				if !ok {
+					return errors.New("ride event consumer deliveries closed")
+				}
+				if err := processRideEvent(delivery, handle); err != nil {
+					return err
+				}
+			}
+		}
+	})
+}
+
 func publishPayment(ctx context.Context, ch *amqp.Channel, returns <-chan amqp.Return, event TripCompleted) error {
 	body, err := json.Marshal(event)
 	if err != nil {
@@ -193,6 +239,19 @@ func process(ctx context.Context, delivery amqp.Delivery, handle func(context.Co
 	return delivery.Ack(false)
 }
 
+func processRideEvent(delivery amqp.Delivery, handle func(RideEvent)) error {
+	var event RideEvent
+	if delivery.Type != RideEventKind || len(delivery.Body) > 16<<10 ||
+		json.Unmarshal(delivery.Body, &event) != nil || delivery.MessageId != event.ID || !event.Valid() {
+		slog.Warn("discarding malformed ride event")
+		return delivery.Reject(false)
+	}
+	if handle != nil {
+		handle(event)
+	}
+	return delivery.Ack(false)
+}
+
 func run(ctx context.Context, uri, worker string, work func(*amqp.Channel) error) {
 	for ctx.Err() == nil {
 		err := connect(ctx, uri, work)
@@ -257,7 +316,7 @@ func declarePaymentTopology(channel *amqp.Channel) error {
 }
 
 func declareRideTopology(channel *amqp.Channel) error {
-	if err := channel.ExchangeDeclare(RideExchange, "topic", true, false, false, false, nil); err != nil {
+	if err := declareRideExchange(channel); err != nil {
 		return err
 	}
 	if _, err := channel.QueueDeclare(RideBufferQueue, true, false, false, false, amqp.Table{
@@ -268,4 +327,8 @@ func declareRideTopology(channel *amqp.Channel) error {
 		return err
 	}
 	return channel.QueueBind(RideBufferQueue, "#", RideExchange, false, nil)
+}
+
+func declareRideExchange(channel *amqp.Channel) error {
+	return channel.ExchangeDeclare(RideExchange, "topic", true, false, false, false, nil)
 }

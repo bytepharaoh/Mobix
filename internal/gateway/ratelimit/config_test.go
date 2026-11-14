@@ -14,7 +14,8 @@ func TestLoadConfigUsesSafeDefaultsAndRejectsInvalidValues(t *testing.T) {
 		t.Fatal(err)
 	}
 	if config.Policies[LoginAccount] != (Policy{Capacity: 5, Window: 15 * time.Minute}) ||
-		config.Policies[OfferResponse] != (Policy{Capacity: 30, Window: time.Minute}) {
+		config.Policies[OfferResponse] != (Policy{Capacity: 30, Window: time.Minute}) ||
+		config.Policies[EventStream] != (Policy{Capacity: 30, Window: time.Minute}) {
 		t.Fatalf("unexpected default policies: %+v", config.Policies)
 	}
 

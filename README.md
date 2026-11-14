@@ -64,6 +64,7 @@ Every gateway replica uses the same Redis token buckets. The atomic Lua check us
 | Driver location | `120/1m` | Authenticated account |
 | Offer inbox polling | `120/1m` | Authenticated account |
 | Offer accept or decline | `30/1m` | Authenticated account |
+| Event-stream connection | `30/1m` | Authenticated account |
 
 Each policy has a separate bucket. Exhausting offer polling therefore does not prevent a driver from accepting an open offer. Override the defaults with the `RATE_LIMIT_*` values in [`.env.example`](.env.example). Use a random value of at least 32 bytes for `RATE_LIMIT_KEY_SECRET`; rotating it resets and re-keys the buckets.
 
@@ -114,7 +115,15 @@ Every client-visible trip or offer change advances the trip's monotonic `version
 
 The trip worker publishes these notifications to the durable `mobix.ride.events.v1` topic exchange using the event type as the routing key. It removes an outbox entry only after RabbitMQ confirms the mandatory, persistent publish. A reconnect can therefore publish a message more than once, but the stable `ride-event:<trip-id>:<version>` ID and monotonic version make downstream deduplication deterministic. Events contain audience account IDs, status, and version—not pickup or drop-off coordinates or a duplicate copy of trip state.
 
-The current foundation binds a bounded diagnostic queue, `mobix.realtime.ride-events.v1.buffer`, to the exchange. It retains at most 10,000 notifications for up to 10 minutes. The upcoming streaming delivery adds authorized per-replica consumers and uses each event as an invalidation hint: clients first receive the current trip snapshot, then apply only newer versions and can safely fetch the snapshot again after reconnecting.
+The exchange also feeds a bounded diagnostic queue, `mobix.realtime.ride-events.v1.buffer`, which retains at most 10,000 notifications for up to 10 minutes. Each gateway replica owns an exclusive RabbitMQ queue, so every replica receives every notification and can serve its local connections without database polling.
+
+### Real-time streams
+
+`GET /v1/trips/{id}/events` streams one authorized trip to its rider, assigned driver, or an operator. `GET /v1/drivers/me/offers/events` streams offer-inbox changes to the signed-in driver. Both endpoints use Server-Sent Events and require the normal bearer token; browser clients should use streaming `fetch` or an EventSource implementation that can set the `Authorization` header rather than putting tokens in query strings.
+
+Each connection subscribes before fetching its initial state, then receives a `snapshot` event followed by notifications with newer versions only. `Last-Event-ID` is accepted on reconnect, stable event IDs suppress duplicates, heartbeat comments keep idle connections alive, and a fresh snapshot repairs any gap after a broker reconnect. Audience account IDs used inside the gateway are removed from client events.
+
+Every replica limits total connections, connections per account, subscriber buffer size, write time, heartbeat interval, and connection lifetime. Repeated connection attempts also use the shared Redis quota. A full buffer or blocked write disconnects that client instead of slowing broker consumption. Configure these safeguards with the `SSE_*` and `RATE_LIMIT_EVENT_STREAM` values in [`.env.example`](.env.example).
 
 ## Screenshots
 
@@ -178,7 +187,7 @@ For a deployment with external dependencies, use [the base manifests](deployment
 | `rate-limit-key` | Random value of at least 32 bytes used to HMAC rate-limit subjects |
 | `bootstrap-email`, `bootstrap-password` | First operator credentials. Use a unique password of 12 to 72 UTF-8 bytes. |
 | `trip-mongo-uri`, `driver-mongo-uri`, `payment-mongo-uri` | MongoDB connection strings. Give each service access to its own collections and required index operations. |
-| `trip-rabbitmq-url`, `payment-rabbitmq-url` | AMQP connection strings scoped to the Mobix queues and their declaration permissions. |
+| `gateway-rabbitmq-url`, `trip-rabbitmq-url`, `payment-rabbitmq-url` | AMQP connection strings scoped to the Mobix exchange and queues with their required declaration, binding, publish, or consume permissions. |
 
 The gateway Service is cluster-local. The internal HTTP and Redis ingress policies require a CNI that enforces NetworkPolicy. Use TLS and an identity-aware ingress for shared environments, configure its CIDRs as trusted proxies, and use encrypted `rediss://` connections when Redis leaves the cluster. The demo uses a single Redis pod without persistence; production should use managed replication and failover. The demo also uses single-node infrastructure and development credentials. Its MongoDB container lets glibc own rseq for compatibility with affected Linux kernels. Use unique operator credentials and independent random internal-signing and rate-limit keys in shared deployments. [MongoDB container compatibility notes](https://github.com/docker-library/mongo/issues/765)
 
@@ -200,12 +209,13 @@ make build       # compile the four services
 make test-unit   # tests without Docker
 make test        # race detector and MongoDB, Redis, and RabbitMQ Testcontainers tests
 make dispatch-demo # automatic offer expiry, next-batch acceptance, and receipt
+make realtime-demo # authenticated SSE snapshot and RabbitMQ-delivered update
 make rate-limit-demo # 429 headers and Redis outage behavior
 make verify        # HTTP authorization, concurrent assignment, and broker recovery
 make k8s-render  # render the local Kubernetes overlay
 ```
 
-Run `make verify` against a local test stack. It stops and restarts RabbitMQ and restarts the trip service while a payment event is pending. The verification script provisions two riders and two drivers, checks cross-account access and role permissions, and confirms recovery after a broker outage. The Redis integration test alternates requests between two independent HTTP gateway replicas and proves they consume one shared quota. GitHub Actions runs that test with the Go authorization and dispatch race suites, all Compose demos, both outage checks, and Kustomize rendering on pull requests.
+Run `make verify` against a local test stack. It stops and restarts RabbitMQ and restarts the trip service while a payment event is pending. The verification script provisions two riders and two drivers, checks cross-account access and role permissions, and confirms recovery after a broker outage. Integration tests prove that two gateway replica queues receive the same ride event, while stream tests cover snapshots, authorization, privacy, version deduplication, broker resynchronization, connection limits, and slow-client cleanup. GitHub Actions runs these with the Redis multi-replica quota test, authorization and dispatch race suites, Compose demos, outage checks, and Kustomize rendering.
 
 ## Roadmap
 

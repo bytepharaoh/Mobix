@@ -17,6 +17,7 @@ const (
 	Location      Operation = "location_update"
 	OfferPoll     Operation = "offer_poll"
 	OfferResponse Operation = "offer_response"
+	EventStream   Operation = "event_stream"
 )
 
 type Policy struct {
@@ -36,7 +37,7 @@ func LoadConfig() (Config, error) {
 		RedisURL:         os.Getenv("REDIS_URL"),
 		KeySecret:        os.Getenv("RATE_LIMIT_KEY_SECRET"),
 		TrustedProxyCIDR: os.Getenv("TRUSTED_PROXY_CIDRS"),
-		Policies:         make(map[Operation]Policy, 6),
+		Policies:         make(map[Operation]Policy, 7),
 	}
 	if config.RedisURL == "" {
 		return Config{}, fmt.Errorf("REDIS_URL is required")
@@ -55,6 +56,7 @@ func LoadConfig() (Config, error) {
 		{Location, "RATE_LIMIT_LOCATION_UPDATE", "120/1m"},
 		{OfferPoll, "RATE_LIMIT_OFFER_POLL", "120/1m"},
 		{OfferResponse, "RATE_LIMIT_OFFER_RESPONSE", "30/1m"},
+		{EventStream, "RATE_LIMIT_EVENT_STREAM", "30/1m"},
 	}
 	for _, item := range defaults {
 		value := os.Getenv(item.environment)

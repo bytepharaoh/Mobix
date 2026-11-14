@@ -19,6 +19,7 @@ secretGenerator:
       - driver-mongo-uri=mongodb://admin:mobix-demo@mongodb:27017/?authSource=admin
       - payment-mongo-uri=mongodb://admin:mobix-demo@mongodb:27017/?authSource=admin
       - trip-rabbitmq-url=amqp://mobix:mobix-demo@rabbitmq:5672/
+      - gateway-rabbitmq-url=amqp://mobix:mobix-demo@rabbitmq:5672/
       - payment-rabbitmq-url=amqp://mobix:mobix-demo@rabbitmq:5672/
       - mongo-password=mobix-demo
       - rabbit-password=mobix-demo

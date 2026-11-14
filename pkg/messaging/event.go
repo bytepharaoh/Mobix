@@ -1,6 +1,9 @@
 package messaging
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 const (
 	CompletedKind  = "mobix.trip.completed.v1"
@@ -41,4 +44,17 @@ type RideEvent struct {
 	OfferAccountIDs []string      `bson:"offer_account_ids,omitempty" json:"offer_account_ids,omitempty"`
 	Version         int64         `bson:"version" json:"version"`
 	OccurredAt      time.Time     `bson:"occurred_at" json:"occurred_at"`
+}
+
+func (event RideEvent) Valid() bool {
+	if event.ID != fmt.Sprintf("ride-event:%s:%d", event.TripID, event.Version) ||
+		event.TripID == "" || event.Version < 1 || event.OccurredAt.IsZero() {
+		return false
+	}
+	switch event.Type {
+	case RideTripCreated, RideTripStatusChanged, RideOffersUpdated, RideMatchingExhausted:
+		return true
+	default:
+		return false
+	}
 }
