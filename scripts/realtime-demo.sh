@@ -44,7 +44,7 @@ jq -e '.version == 1 and .status == "requested"' <<< "$trip" >/dev/null
 curl --silent --show-error --no-buffer --max-time 15 \
   -H "Authorization: Bearer ${rider_token}" \
   -H 'Accept: text/event-stream' \
-  "${MOBIX_URL}/v1/trips/${trip_id}/events" >"$stream_file" 2>/dev/null &
+  "${base_url}/v1/trips/${trip_id}/events" >"$stream_file" 2>/dev/null &
 stream_pid=$!
 wait_for_stream "id: snapshot:${trip_id}:1"
 wait_for_stream 'event: snapshot'
