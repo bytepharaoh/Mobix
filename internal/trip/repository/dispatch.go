@@ -103,7 +103,7 @@ func (r *MongoRepository) OfferInbox(ctx context.Context, accountID string, now 
 		for _, offer := range trip.Dispatch.Offers {
 			if offer.AccountID == accountID && !offer.Declined && offer.ExpiresAt.After(now) {
 				offers = append(offers, domain.DriverOffer{
-					ID: offer.ID, TripID: trip.ID, Pickup: trip.Pickup,
+					ID: offer.ID, TripID: trip.ID, Version: trip.Version, Pickup: trip.Pickup,
 					FareCents: trip.FareCents, Currency: trip.Currency, ExpiresAt: offer.ExpiresAt,
 				})
 			}

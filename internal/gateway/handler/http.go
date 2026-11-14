@@ -10,12 +10,19 @@ import (
 
 	"github.com/bytepharaoh/Mobix/internal/accounts"
 	"github.com/bytepharaoh/Mobix/internal/gateway/ratelimit"
+	"github.com/bytepharaoh/Mobix/internal/gateway/realtime"
 	"github.com/bytepharaoh/Mobix/pkg/authn"
 	apperrors "github.com/bytepharaoh/Mobix/pkg/errors"
 	"github.com/bytepharaoh/Mobix/pkg/httpapi"
 )
 
 func New(trip, driver, payment *url.URL, auth *accounts.Service, delegation authn.Delegation, limits *ratelimit.Limiter, databaseReady func(context.Context) error) http.Handler {
+	return NewWithRealtime(trip, driver, payment, auth, delegation, limits, databaseReady, nil)
+}
+
+func NewWithRealtime(trip, driver, payment *url.URL, auth *accounts.Service, delegation authn.Delegation, limits *ratelimit.Limiter,
+	databaseReady func(context.Context) error, streams *realtime.HTTP,
+) http.Handler {
 	client := &http.Client{Timeout: 1500 * time.Millisecond}
 	mux := httpapi.Mux("gateway", func(ctx context.Context) error {
 		if err := databaseReady(ctx); err != nil {
@@ -67,6 +74,11 @@ func New(trip, driver, payment *url.URL, auth *accounts.Service, delegation auth
 	register("trip", trip, ratelimit.OfferResponse,
 		"POST /v1/trips/{id}/offers/{offerID}/accept", "POST /v1/trips/{id}/offers/{offerID}/decline")
 	register("payment", payment, "", "GET /v1/payments/{tripID}")
+	if streams != nil {
+		streams.Register(mux, auth.Require, func(next http.Handler) http.Handler {
+			return limits.Account(ratelimit.EventStream, next)
+		})
+	}
 	mux.HandleFunc("/v1/", func(w http.ResponseWriter, r *http.Request) {
 		httpapi.Error(w, apperrors.ErrNotFound)
 	})
@@ -78,6 +90,11 @@ func New(trip, driver, payment *url.URL, auth *accounts.Service, delegation auth
 		w.Header().Set("Cache-Control", "no-store")
 		if r.ContentLength > httpapi.MaxBody {
 			httpapi.Error(w, apperrors.New(http.StatusRequestEntityTooLarge, "BODY_TOO_LARGE", "Request body exceeds 64 KiB"))
+			return
+		}
+		_, pattern := mux.Handler(r)
+		if pattern == realtime.TripStreamRoute || pattern == realtime.OffersStreamRoute {
+			mux.ServeHTTP(w, r)
 			return
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)

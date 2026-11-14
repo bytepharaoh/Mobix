@@ -44,6 +44,28 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
+  name: apps-to-rabbitmq
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: rabbitmq
+      app.kubernetes.io/part-of: mobix
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values: [gateway, trip, payment]
+            matchLabels:
+              app.kubernetes.io/part-of: mobix
+      ports:
+        - {protocol: TCP, port: 5672}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
   name: trip-to-driver
 spec:
   podSelector:

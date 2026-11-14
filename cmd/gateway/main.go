@@ -7,9 +7,11 @@ import (
 	"github.com/bytepharaoh/Mobix/internal/accounts"
 	"github.com/bytepharaoh/Mobix/internal/gateway/handler"
 	"github.com/bytepharaoh/Mobix/internal/gateway/ratelimit"
+	"github.com/bytepharaoh/Mobix/internal/gateway/realtime"
 	"github.com/bytepharaoh/Mobix/pkg/authn"
 	"github.com/bytepharaoh/Mobix/pkg/config"
 	"github.com/bytepharaoh/Mobix/pkg/httpapi"
+	"github.com/bytepharaoh/Mobix/pkg/messaging"
 	"github.com/bytepharaoh/Mobix/pkg/mongox"
 )
 
@@ -61,6 +63,16 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("initialize rate limiter: %w", err)
 	}
+	streamConfig, err := realtime.LoadConfig()
+	if err != nil {
+		return fmt.Errorf("real-time stream configuration: %w", err)
+	}
+	hub := realtime.NewHub(streamConfig)
+	streams := realtime.NewHTTP(hub, trip, delegation, streamConfig)
+	worker, cancelWorker := context.WithCancel(ctx)
+	defer cancelWorker()
+	go messaging.RunRideConsumer(worker, config.RabbitURL(), hub.Resync, hub.Publish)
 	ready := func(ctx context.Context) error { return database.Client().Ping(ctx, nil) }
-	return httpapi.Run(ctx, config.GetString("GATEWAY_PORT", "8080"), handler.New(trip, driver, payment, auth, delegation, limits, ready))
+	return httpapi.Run(ctx, config.GetString("GATEWAY_PORT", "8080"),
+		handler.NewWithRealtime(trip, driver, payment, auth, delegation, limits, ready, streams))
 }

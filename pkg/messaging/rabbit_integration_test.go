@@ -19,30 +19,7 @@ func TestRidePublisherConfirmsRoutingBeforeDrainingOutbox(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	container, err := testcontainers.Run(ctx, "rabbitmq:4.2-management",
-		testcontainers.WithEnv(map[string]string{
-			"RABBITMQ_DEFAULT_USER": "mobix",
-			"RABBITMQ_DEFAULT_PASS": "mobix-test",
-		}),
-		testcontainers.WithExposedPorts("5672/tcp"),
-		testcontainers.WithWaitStrategy(wait.ForListeningPort("5672/tcp").WithStartupTimeout(45*time.Second)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := container.Terminate(context.Background()); err != nil {
-			t.Error(err)
-		}
-	})
-	host, err := container.Host(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	port, err := container.MappedPort(ctx, "5672/tcp")
-	if err != nil {
-		t.Fatal(err)
-	}
-	uri := fmt.Sprintf("amqp://mobix:mobix-test@%s:%s/", host, port.Port())
+	uri := rabbitTestURI(t, ctx)
 	event := RideEvent{
 		ID: "ride-event:trip-a:7", TripID: "trip-a", Type: RideOffersUpdated,
 		Status: "requested", RiderAccountID: "rider-a", OfferAccountIDs: []string{"driver-a"},
@@ -90,6 +67,77 @@ func TestRidePublisherConfirmsRoutingBeforeDrainingOutbox(t *testing.T) {
 	if received.ID != event.ID || received.Version != event.Version || received.TripID != event.TripID {
 		t.Fatalf("incorrect published event: %+v", received)
 	}
+}
+
+func TestEveryGatewayReplicaReceivesRideEvents(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires Docker")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	uri := rabbitTestURI(t, ctx)
+	ready := []chan struct{}{make(chan struct{}, 1), make(chan struct{}, 1)}
+	received := []chan RideEvent{make(chan RideEvent, 1), make(chan RideEvent, 1)}
+	for index := range 2 {
+		index := index
+		go RunRideConsumer(ctx, uri, func() {
+			select {
+			case ready[index] <- struct{}{}:
+			default:
+			}
+		}, func(event RideEvent) { received[index] <- event })
+	}
+	for index := range 2 {
+		select {
+		case <-ready[index]:
+		case <-ctx.Done():
+			t.Fatalf("gateway consumer %d did not become ready", index+1)
+		}
+	}
+	event := RideEvent{
+		ID: "ride-event:trip-fanout:1", TripID: "trip-fanout", Type: RideTripCreated,
+		Status: "requested", RiderAccountID: "rider-a", Version: 1, OccurredAt: time.Now().UTC().Truncate(time.Millisecond),
+	}
+	outbox := &rideOutboxStub{event: &event, published: make(chan RideEvent, 1)}
+	go RunRidePublisher(ctx, uri, outbox)
+	for index := range 2 {
+		select {
+		case actual := <-received[index]:
+			if actual.ID != event.ID {
+				t.Fatalf("gateway consumer %d received %+v", index+1, actual)
+			}
+		case <-ctx.Done():
+			t.Fatalf("gateway consumer %d did not receive the event", index+1)
+		}
+	}
+}
+
+func rabbitTestURI(t *testing.T, ctx context.Context) string {
+	t.Helper()
+	container, err := testcontainers.Run(ctx, "rabbitmq:4.2-management",
+		testcontainers.WithEnv(map[string]string{
+			"RABBITMQ_DEFAULT_USER": "mobix",
+			"RABBITMQ_DEFAULT_PASS": "mobix-test",
+		}),
+		testcontainers.WithExposedPorts("5672/tcp"),
+		testcontainers.WithWaitStrategy(wait.ForListeningPort("5672/tcp").WithStartupTimeout(45*time.Second)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := container.Terminate(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
+	host, err := container.Host(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := container.MappedPort(ctx, "5672/tcp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return fmt.Sprintf("amqp://mobix:mobix-test@%s:%s/", host, port.Port())
 }
 
 type rideOutboxStub struct {

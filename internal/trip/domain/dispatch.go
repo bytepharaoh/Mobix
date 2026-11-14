@@ -31,6 +31,7 @@ type Offer struct {
 type DriverOffer struct {
 	ID        bson.ObjectID `json:"id"`
 	TripID    bson.ObjectID `json:"trip_id"`
+	Version   int64         `json:"version"`
 	Pickup    Location      `json:"pickup"`
 	FareCents int64         `json:"fare_cents"`
 	Currency  string        `json:"currency"`

@@ -51,7 +51,7 @@ func New(backend Backend, config Config) (*Limiter, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, operation := range []Operation{LoginIP, LoginAccount, RideRequest, Location, OfferPoll, OfferResponse} {
+	for _, operation := range []Operation{LoginIP, LoginAccount, RideRequest, Location, OfferPoll, OfferResponse, EventStream} {
 		policy, ok := config.Policies[operation]
 		if !ok || policy.Capacity < 1 || policy.Window < time.Second {
 			return nil, fmt.Errorf("invalid or missing policy %q", operation)

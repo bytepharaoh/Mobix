@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Mobix API",
-    "version": "2.1.0",
+    "version": "2.2.0",
     "description": "Ride sharing with individual rider, driver, and operator accounts, nearby driver offers, and simulated receipts."
   },
   "servers": [
@@ -1331,6 +1331,60 @@
         }
       }
     },
+    "/v1/trips/{id}/events": {
+      "get": {
+        "tags": [
+          "Trips"
+        ],
+        "operationId": "streamTripEvents",
+        "summary": "Stream an authorized trip",
+        "description": "Server-Sent Events stream for the trip owner, assigned driver, or an operator. The first event is an authorized `snapshot`; newer versioned ride events follow. Heartbeat comments keep idle connections alive. Reconnect with `Last-Event-ID`; every connection still receives a fresh snapshot, so missed broker notifications cannot create a state gap.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            }
+          },
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE stream beginning with the current trip snapshot",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A valid account session is required"
+          },
+          "404": {
+            "description": "The trip is unknown or inaccessible"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "description": "The upstream snapshot or stream capacity is unavailable"
+          }
+        }
+      }
+    },
     "/v1/drivers/me/offers": {
       "get": {
         "tags": [
@@ -1385,6 +1439,51 @@
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/v1/drivers/me/offers/events": {
+      "get": {
+        "tags": [
+          "Dispatch"
+        ],
+        "operationId": "streamDriverOffers",
+        "summary": "Stream my ride offers",
+        "description": "Server-Sent Events stream for a signed-in driver. It starts with the current offer-inbox snapshot and then emits versioned notifications when this driver's offers or assigned trips change. Audience identifiers used for server-side routing are never included in client events.",
+        "parameters": [
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE stream beginning with the current offer-inbox snapshot",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A valid account session is required"
+          },
+          "403": {
+            "description": "Only signed-in drivers can open this stream"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "description": "The upstream snapshot or stream capacity is unavailable"
           }
         }
       }
@@ -2059,6 +2158,7 @@
         "required": [
           "id",
           "trip_id",
+          "version",
           "pickup",
           "fare_cents",
           "currency",
@@ -2072,6 +2172,11 @@
           "trip_id": {
             "type": "string",
             "pattern": "^[0-9a-f]{24}$"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
           },
           "pickup": {
             "$ref": "#/components/schemas/Location"
