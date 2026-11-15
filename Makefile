@@ -1,12 +1,15 @@
 SHELL := /bin/sh
 SERVICES := gateway trip driver payment
+PUBLIC_COMPOSE := docker compose -f docker-compose.yaml -f docker-compose.ghcr.yaml
 
-.PHONY: help up down docker-up docker-down logs build clean test test-unit test-repo demo dispatch-demo realtime-demo rate-limit-demo verify k8s-render fmt fmt-check vet check mock
+.PHONY: help up up-public down down-public docker-up docker-down logs build clean test test-unit test-repo demo dispatch-demo realtime-demo rate-limit-demo verify k8s-render fmt fmt-check vet check mock
 
 help:
 	@printf '%s\n' \
 	  'make up          Build and start the full local stack' \
+	  'make up-public   Pull and start the published GHCR images' \
 	  'make down        Stop the stack and keep persisted data' \
+	  'make down-public Stop the stack started from GHCR images' \
 	  'make logs        Follow all service logs' \
 	  'make demo        Run a complete ride and print its payment receipt' \
 	  'make dispatch-demo  Run a ride through automatic driver offers' \
@@ -22,8 +25,15 @@ help:
 up docker-up:
 	docker compose up -d --build --wait
 
+up-public:
+	$(PUBLIC_COMPOSE) pull
+	$(PUBLIC_COMPOSE) up -d --no-build --wait
+
 down docker-down:
 	docker compose down
+
+down-public:
+	$(PUBLIC_COMPOSE) down
 
 logs:
 	docker compose logs -f
