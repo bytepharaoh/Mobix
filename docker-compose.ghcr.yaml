@@ -1,0 +1,13 @@
+services:
+  gateway:
+    image: ghcr.io/bytepharaoh/mobix:gateway
+    pull_policy: always
+  trip:
+    image: ghcr.io/bytepharaoh/mobix:trip
+    pull_policy: always
+  driver:
+    image: ghcr.io/bytepharaoh/mobix:driver
+    pull_policy: always
+  payment:
+    image: ghcr.io/bytepharaoh/mobix:payment
+    pull_policy: always
